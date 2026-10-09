@@ -27,3 +27,12 @@ Format: decision, alternatives, why, date. Newest last.
 ## 2026-10-09 — Capacity units
 - **Decision:** decimal SI units (1 TB = 10^12 B), matching drive labelling; single shared formatter in `facet-core`.
 - **Why:** consistency between UI and CLI; matches vendor and `lsblk -b`-derived expectations.
+
+## 2026-10-09 — Never wake a sleeping GPU (gpu_guard)
+- **Decision:** at startup, if a GPU of a different vendor than the boot GPU is runtime-suspended, set `VK_LOADER_DRIVERS_SELECT` to the boot GPU's driver globs, unless the user already set any `VK_*` driver variable. GPU collectors must read `runtime_status` before querying a device and report "suspended, not queried".
+- **Alternatives:** hardcoded Intel ICD path (distro-specific); leave the loader alone (18 s startup, changes hardware power state); ask users to set env vars.
+- **Why:** measured 18 s to first window with the dGPU waking vs 170–235 ms without. An inspector should not alter the state it reports.
+
+## 2026-10-09 — v1 never calls UDisks2 methods
+- **Decision:** read UDisks2 properties only. No `SmartUpdate`, self-test, or other methods in v1.
+- **Why:** product boundary (inspection only); those calls need authorization and have side effects.
