@@ -1,0 +1,18 @@
+[workspace]
+resolver = "2"
+members = ["crates/core", "crates/collectors", "crates/cli", "crates/app"]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+license = "MIT OR Apache-2.0"
+
+[workspace.dependencies]
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+# GPUI is pre-1.0; pinned to the same Zed revision as ../pipkin. The crates.io 0.2.2 release uses the
+# Blade renderer, which enumerates every Vulkan device and deadlocks the NVIDIA driver on hybrid laptops.
+# This revision uses wgpu and follows the compositor's GPU hint instead.
+gpui = { git = "https://github.com/zed-industries/zed", rev = "a84689073d296dfd39987bc7dd478e43ef76d83a", default-features = false, features = ["wayland", "x11", "font-kit"] }
+gpui_platform = { git = "https://github.com/zed-industries/zed", rev = "a84689073d296dfd39987bc7dd478e43ef76d83a", default-features = false, features = ["wayland", "x11", "font-kit"] }
+

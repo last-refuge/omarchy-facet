@@ -1,0 +1,25 @@
+Generated with the built-in image generation tool. Visual concept only; hardware data and component illustration are illustrative.
+
+Use case: ui-mockup.
+Create an exceptionally beautiful, high-fidelity brand presentation and desktop Linux hardware inspection application mockup for a new proposed brand named "facet" (Facet). Tagline exactly: "Know your machine." This is a visual concept, not an implemented app. Landscape image, approximately 1800x1250 or larger, beautifully sharp legible typography.
+
+Composition: sophisticated editorial design board. Top 17% is a warm ivory branding band: at left a distinctive simple geometric vermilion mark formed from three angular cut planes suggesting an abstract f, beside lowercase wordmark "facet" in bold refined geometric grotesk. Under it small tagline "Know your machine." At right tiny uppercase label "HARDWARE, BEAUTIFULLY UNDERSTOOD." and four palette swatches deep graphite, ivory, vermilion, soft sage. Remaining 83% a large straight-on desktop app window taking nearly the entire width with generous 35px outer margin, no perspective distortion. Barely visible soft shadow on ivory canvas, immaculate visual presentation. The application itself has an independently designed warm-light main content surface and graphite navigation sidebar. It is a native Linux application, distro agnostic, no Omarchy or distro branding. No Mac traffic light buttons. Small Linux-style minimize, maximize and close glyphs at upper right. No browser chrome.
+
+App design: polished professional hardware instrument, refined industrial editorial aesthetic. Excellent information hierarchy, large confident typography, finely aligned rows, generous whitespace, very subtle hairline dividers, minimal rounded corners, crisp thin custom technical icons. Avoid generic SaaS dashboard card grids; use a coherent editorial overview layout. Main font a beautiful humanist/geometric sans akin IBM Plex Sans; technical data in IBM Plex Mono. Main background #F4F1EA, text #252726, vermilion #D84B33, muted graphite #202523, sage #78917C. Colored fills remain restrained. No neon, purple, glassmorphism or glowing gradients.
+
+Left sidebar roughly 200px wide, graphite background. Small facet logo at top; machine switcher below "Studio workstation" with small green dot and smaller "Local machine". Navigation with elegant line icons: "Overview" selected with muted lighter graphite pill and vermilion thin indicator; then "Processor", "Memory", "Graphics", "Storage", "Network", "Displays", "Peripherals", "Power & sensors". Bottom "Device connections" and small settings icon with "Preferences". This is inspection only: no toggles that control devices, no repair or install actions.
+
+Top toolbar of content: breadcrumb "My machine / Overview" at left; search affordance "Find a device or specification" with Ctrl K keycap at right; quiet outlined "Export report" button. Below, large title "A closer look." with short subtitle "Every component. One clear picture." Right small label "Updated just now".
+
+Main overview feature, upper half of content: Left column heading "Studio workstation", caption "Custom desktop · 12 connected devices". Below four compact beautifully aligned specification lines:
+"PROCESSOR" then "AMD Ryzen 9 7950X" with secondary "16 cores / 32 threads"
+"MEMORY" then "64 GB DDR5" with secondary "2 × 32 GB / 5600 MT/s"
+"GRAPHICS" then "AMD Radeon RX 7900 XTX" with secondary "24 GB GDDR6"
+"STORAGE" then "2 TB NVMe SSD" with secondary "Samsung 990 PRO".
+Right half a sophisticated restrained technical isometric illustration of an exploded desktop motherboard assembly, rendered as fine graphite linework on ivory, with separated CPU plane, two memory modules and graphics card, tiny vermilion anchor points and fine guide lines. It looks like beautifully illustrated engineering documentation, not a science fiction hologram or huge photoreal PC. Keep it contained and subordinate to clear information. Small caption "Explore device connections →".
+
+Lower main area separated by horizontal line. Label "LIVE READINGS" with small sage dot and "Refreshing every 2 seconds". Three horizontally arranged unboxed readouts separated by vertical hairlines: "CPU temperature" large "46 °C" with tiny low amplitude vermilion sparkline; "Memory in use" large "12.4 / 64 GB" with thin graphite usage bar; "GPU temperature" large "42 °C" with tiny muted sage sparkline. Do not assert overall machine health.
+Bottom section title "Connected & ready" with modest "View all 12 →" right. Two clean device rows: small monitor outline icon "Dell UltraSharp U2723QE" with subtext "DisplayPort · 3840 × 2160 · 60 Hz" and trailing chevron; small keyboard icon "Keychron Q1" with subtext "USB · Keyboard" and trailing chevron.
+Tiny footer text "Illustrative hardware data · Inspection mode".
+
+The brand must feel warm, intelligent, tangible, precise and desirable. Product usability first. Typography and spacing must be award-winning, understated and genuinely implementable as native desktop widgets. Render the entire window, no cropped navigation, all text readable. No marketing CTAs or upgrade buttons.

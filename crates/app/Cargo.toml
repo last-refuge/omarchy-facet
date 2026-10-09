@@ -1,0 +1,16 @@
+[package]
+name = "facet-app"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[[bin]]
+name = "facet-app"
+path = "src/main.rs"
+
+[dependencies]
+facet-core = { path = "../core" }
+facet-collectors = { path = "../collectors" }
+gpui.workspace = true
+gpui_platform.workspace = true
+env_logger = "0.11.11"
