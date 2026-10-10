@@ -30,24 +30,30 @@ choose to show or include them. Hostnames and user names are never collected.
 
 ## Install
 
-On Arch Linux and derivatives (including Omarchy):
+**Arch Linux and Omarchy.** One command:
 
 ```bash
-git clone https://github.com/last-refuge/omarchy-facet.git
-cd omarchy-facet
-scripts/build-package.sh        # builds a package in ./target/package, never installs
-sudo pacman -U target/package/facet-*.pkg.tar.zst
+curl -fsSL https://raw.githubusercontent.com/last-refuge/omarchy-facet/master/install.sh | bash
 ```
 
-Facet is distribution-independent; the package is just the first one provided. To build from source anywhere:
+It installs a real package (so `pacman` can update and remove it), checks it works, and tells you how to
+open it. On Omarchy, press <kbd>Super</kbd>+<kbd>Space</kbd> and type "Facet". It downloads a prebuilt,
+checksum-verified package when a release exists and otherwise builds from source in a few minutes. It asks
+for your password only for the final `pacman -U`.
+
+Prefer to read it first? `install.sh` is short. Run it with `--help`, or `--dry-run` to see the plan without
+changing anything.
+
+**Any other Linux.** The same command builds from source into `~/.local` and needs no administrator
+access. It tells you exactly which development packages to install if any are missing. Or by hand:
 
 ```bash
-# needs: Rust (see rust-toolchain.toml), clang, cmake, git, pkg-config,
-#        wayland, libxkbcommon(-x11), libxcb, fontconfig, a Vulkan driver
-cargo build --release
-./target/release/facet-app      # the app
-./target/release/facet          # the command-line tool
+# needs: Rust (https://rustup.rs), git, clang, cmake, pkg-config, wayland, libxkbcommon(-x11), libxcb,
+#        fontconfig, freetype, and a Vulkan driver
+make install PREFIX=~/.local
 ```
+
+**Remove it:** `sudo pacman -Rns facet` (Arch) or `./install.sh --uninstall`.
 
 ## Use
 

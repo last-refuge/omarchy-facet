@@ -1,0 +1,38 @@
+# Publishing a version: git tag v1.0.0 && git push origin v1.0.0
+# Builds the Arch package in a clean container and attaches it, with its checksum, to the release.
+# install.sh downloads exactly these two assets, so keep the names.
+name: release
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: write
+
+jobs:
+  arch-package:
+    runs-on: ubuntu-latest
+    container: archlinux:base-devel
+    steps:
+      - name: Install build dependencies
+        run: |
+          pacman -Syu --noconfirm --needed git rust clang cmake pkgconf sudo \
+            wayland libxkbcommon libxkbcommon-x11 libxcb fontconfig freetype2 vulkan-icd-loader
+      - uses: actions/checkout@v4
+      - name: Build the package (makepkg refuses to run as root)
+        run: |
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
+          useradd -m builder
+          chown -R builder:builder "$GITHUB_WORKSPACE"
+          sudo -u builder git config --global --add safe.directory "$GITHUB_WORKSPACE"
+          sudo -u builder bash -c "cd '$GITHUB_WORKSPACE' && scripts/build-package.sh"
+      - name: Name the assets the installer expects
+        run: |
+          cp target/package/facet-*-x86_64.pkg.tar.zst facet-x86_64.pkg.tar.zst
+          sha256sum facet-x86_64.pkg.tar.zst > facet-x86_64.pkg.tar.zst.sha256
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            facet-x86_64.pkg.tar.zst
+            facet-x86_64.pkg.tar.zst.sha256
+          generate_release_notes: true
