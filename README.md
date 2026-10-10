@@ -19,7 +19,7 @@ It only ever reads. It never changes your hardware.
 - **Connections.** See which devices hang off which hub or dock, which display is on which GPU.
 - **Search everything** with <kbd>Ctrl</kbd>+<kbd>K</kbd>. Click any value to copy it.
 - **Reports** as readable text or versioned JSON, with a preview, for bug reports and support.
-- **Live updates.** Plug something in and it appears. Optional live monitoring draws short trend charts.
+- **Live updates.** Plug something in and it appears. Live monitoring is on by default: temperatures, memory and battery refresh every two seconds with short trend charts (about 1–2% of one CPU core; turn it off in Preferences or with <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>M</kbd>).
 - **Light and dark themes**, full keyboard access, screen-reader landmarks and names.
 
 ## Privacy
@@ -67,7 +67,7 @@ make install PREFIX=~/.local
 | <kbd>Alt</kbd>+<kbd>←</kbd> | Back |
 | <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>S</kbd> | Show or hide data sources |
 | <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>I</kbd> | Show or hide serial numbers and addresses |
-| <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>M</kbd> | Live monitoring on/off |
+| <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>M</kbd> | Live monitoring on/off (on by default) |
 | <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>L</kbd> | Light / dark |
 
 ```bash

@@ -72,6 +72,17 @@ impl Page {
     }
 }
 
+/// Collectors whose numbers change from second to second. A live tick re-reads only these; devices
+/// appearing or disappearing is hotplug's job, which does a full read.
+const LIVE_COLLECTORS: [&str; 5] = ["processor", "memory", "graphics", "power", "sensors"];
+/// The graphics collector (GPU power state) changes rarely and costs the most after sensors, so it joins
+/// only every fifth tick (ten seconds).
+const GRAPHICS_EVERY: u64 = 5;
+/// The same set without graphics, for most ticks.
+const WITHOUT_GRAPHICS: [&str; 4] = ["processor", "memory", "power", "sensors"];
+/// While Facet's window is not focused, only every fifth tick (ten seconds) refreshes.
+const BACKGROUND_EVERY: u64 = 5;
+
 /// Samples kept per live reading: 90 at one every two seconds is three minutes.
 const HISTORY_CAP: usize = 90;
 
@@ -109,6 +120,8 @@ pub enum ThemePref {
 struct Saved {
     page: Option<String>,
     theme: Option<ThemePref>,
+    /// Live monitoring on/off; absent means "use the default" (on for real hardware).
+    live: Option<bool>,
 }
 
 fn state_path() -> Option<PathBuf> {
@@ -163,6 +176,12 @@ pub struct Facet {
     pub new_ids: HashSet<String>,
     staging: BTreeMap<usize, Vec<Component>>,
     staging_done: usize,
+    /// How many collector results this refresh is waiting for.
+    expected: usize,
+    /// A refresh is in flight; live ticks must not supersede it.
+    refreshing: bool,
+    /// Whether Facet's window has focus; live updates slow down when it does not.
+    window_active: bool,
     round_failures: Vec<String>,
     last_updated: Option<Instant>,
     /// Live monitoring re-reads every two seconds and keeps a bounded history of live numbers.
@@ -181,7 +200,7 @@ pub struct Facet {
 }
 
 impl Facet {
-    pub fn new(source: Source, initial: Option<Page>, theme: Option<ThemePref>, window: &mut Window, cx: &mut Context<Self>) -> Self {
+    pub fn new(source: Source, initial: Option<Page>, theme: Option<ThemePref>, live: Option<bool>, window: &mut Window, cx: &mut Context<Self>) -> Self {
         let saved = load_saved();
         let page = initial.or_else(|| saved.page.as_deref().and_then(Page::parse)).unwrap_or(Page::Overview);
         let theme_pref = theme.or(saved.theme).unwrap_or(ThemePref::System);
@@ -205,6 +224,9 @@ impl Facet {
             new_ids: HashSet::new(),
             staging: BTreeMap::new(),
             staging_done: 0,
+            expected: 0,
+            refreshing: false,
+            window_active: true,
             round_failures: Vec::new(),
             last_updated: None,
             live: false,
@@ -218,15 +240,30 @@ impl Facet {
             narrow: false,
             viewport_w: 1240.0,
         };
+        cx.observe_window_activation(window, |this, window, cx| {
+            let was_active = this.window_active;
+            this.window_active = window.is_window_active();
+            // Coming back to the window: catch up right away instead of waiting for the next tick.
+            if this.window_active && !was_active && this.live && this.settled && !this.is_loading() && !this.refreshing {
+                this.load_collectors(cx, Some(&WITHOUT_GRAPHICS));
+            }
+        })
+        .detach();
         this.apply_theme(window.appearance(), cx);
         cx.observe_window_appearance(window, |this, window, cx| {
             this.apply_theme(window.appearance(), cx);
             cx.notify();
         })
         .detach();
+        // Live monitoring is on by default for real hardware (demo data stays still unless asked).
+        let is_live_source = matches!(this.source, Source::Live);
+        let want_live = live.unwrap_or(is_live_source && saved.live.unwrap_or(true));
         this.start_load(cx);
-        if matches!(this.source, Source::Live) {
+        if is_live_source {
             this.start_hotplug(cx);
+        }
+        if want_live {
+            this.set_live(true, cx);
         }
         window.focus(&this.focus, cx);
         this
@@ -263,7 +300,7 @@ impl Facet {
     fn save(&self) {
         let Some(path) = state_path() else { return };
         // Only remember pages that survive a restart (a component page for a vanished device is fine too).
-        let saved = Saved { page: Some(self.page.key()), theme: Some(self.theme_pref) };
+        let saved = Saved { page: Some(self.page.key()), theme: Some(self.theme_pref), live: Some(self.live) };
         if let Some(dir) = path.parent() {
             let _ = std::fs::create_dir_all(dir);
         }
@@ -312,7 +349,13 @@ impl Facet {
         cx.notify();
     }
 
+    /// A full read of every collector (startup, Ctrl+R, hotplug).
     pub fn start_load(&mut self, cx: &mut Context<Self>) {
+        self.load_collectors(cx, None);
+    }
+
+    /// Read the collectors named in `only`, or all of them. Before the first load finishes everything is read.
+    fn load_collectors(&mut self, cx: &mut Context<Self>, only: Option<&[&str]>) {
         self.epoch += 1;
         let epoch = self.epoch;
         self.staging.clear();
@@ -340,7 +383,16 @@ impl Facet {
                     self.parts.clear();
                     self.failures.clear();
                 }
-                for (i, (name, collect)) in facet_collectors::COLLECTORS.iter().enumerate() {
+                let only = if self.settled { only } else { None };
+                let run: Vec<usize> = facet_collectors::COLLECTORS
+                    .iter()
+                    .enumerate()
+                    .filter(|(_, (n, _))| only.is_none_or(|o| o.contains(n)))
+                    .map(|(i, _)| i)
+                    .collect();
+                self.expected = run.len();
+                self.refreshing = self.settled;
+                for (i, (name, collect)) in facet_collectors::COLLECTORS.iter().enumerate().filter(|(i, _)| run.contains(i)) {
                     let collect = *collect;
                     let name = *name;
                     cx.spawn(async move |this: WeakEntity<Self>, cx| {
@@ -396,8 +448,12 @@ impl Facet {
             }
         }
         self.staging_done += 1;
-        if self.staging_done >= total {
-            self.parts = std::mem::take(&mut self.staging);
+        if self.staging_done >= self.expected {
+            // Merge: a live tick refreshes only some collectors and keeps the others' parts.
+            for (i, part) in std::mem::take(&mut self.staging) {
+                self.parts.insert(i, part);
+            }
+            self.refreshing = false;
             self.failures = std::mem::take(&mut self.round_failures);
             let inv = Self::concat_parts(&self.parts);
             self.commit_inventory(inv, cx);
@@ -462,7 +518,7 @@ impl Facet {
     }
 
     pub fn toggle_live(&mut self, _: &ToggleLive, _: &mut Window, cx: &mut Context<Self>) {
-        self.set_live(!self.live, cx);
+        self.set_live_pref(!self.live, cx);
     }
 
     pub fn set_live(&mut self, on: bool, cx: &mut Context<Self>) {
@@ -471,11 +527,17 @@ impl Facet {
         if on {
             self.record_history();
             self.live_task = Some(cx.spawn(async move |this: WeakEntity<Self>, cx| {
+                let mut tick: u64 = 0;
                 loop {
                     cx.background_executor().timer(Duration::from_secs(2)).await;
                     let alive = this.update(cx, |this, cx| {
-                        if this.settled && !this.is_loading() {
-                            this.start_load(cx);
+                        tick += 1;
+                        if this.settled && !this.is_loading() && !this.refreshing {
+                            if !this.window_active && !tick.is_multiple_of(BACKGROUND_EVERY) {
+                                return;
+                            }
+                            let set: &[&str] = if tick.is_multiple_of(GRAPHICS_EVERY) { &LIVE_COLLECTORS } else { &WITHOUT_GRAPHICS };
+                            this.load_collectors(cx, Some(set));
                         }
                     });
                     if alive.is_err() {
@@ -487,6 +549,12 @@ impl Facet {
             self.samples.clear();
         }
         cx.notify();
+    }
+
+    /// A user's choice: apply it and remember it.
+    pub fn set_live_pref(&mut self, on: bool, cx: &mut Context<Self>) {
+        self.set_live(on, cx);
+        self.save();
     }
 
     /// Seconds since the last completed read, for the "updated" label.

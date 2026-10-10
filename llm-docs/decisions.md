@@ -55,3 +55,9 @@ Format: decision, alternatives, why, date. Newest last.
 ## 2026-10-10 — Licence MIT OR Apache-2.0; third-party audit
 - **Decision:** Facet is `MIT OR Apache-2.0`. `scripts/license-audit.py` walks the shipped dependency graph (Linux) and fails on anything outside a permissive allow-list; `THIRD-PARTY-LICENSES.md` is generated from it.
 - **Result:** no GPL/AGPL crates; the 23 git-sourced crates (Zed's GPUI revision and forks) are Apache-2.0 or MIT; one unusual permissive licence (`bzip2-1.0.6`) allow-listed. Bundled assets: IBM Plex Sans and Lilex (SIL OFL 1.1), Lucide icons (ISC).
+
+## 2026-10-10 — Live monitoring on by default (user decision)
+- **Decision:** for real hardware, live monitoring starts on (re-read every 2 s, three minutes of history); demo fixtures stay still unless `--live`. The choice is remembered (`live` in `state.json`) and `--live` / `--no-live` override it for a run.
+- **Alternatives:** off by default (the earlier choice, to meet the <1% idle target); a longer interval.
+- **Why:** the overview's trend lines and "Refreshing every 2 seconds" are central to the concept design, and a hardware monitor that is frozen by default reads as broken.
+- **Cost, and how it is contained:** about 1.0–1.7% of one core while focused (0.0% when turned off). A tick re-reads only processor, memory, power and sensors (graphics every 10 s); full reads happen on hotplug and Ctrl+R; a live tick never supersedes an in-flight full refresh; updates drop to every 10 s while the window is unfocused. The plan's <1% target stays defined "with live monitoring off".

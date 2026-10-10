@@ -422,7 +422,7 @@ impl Facet {
                     .font_weight(FontWeight::SEMIBOLD)
                     .hover(|s| s.bg(t.colors.hover))
                     .focus_visible(|s| s.border_color(t.colors.accent))
-                    .on_activate(cx, |this, _, cx| this.set_live(true, cx))
+                    .on_activate(cx, |this, _, cx| this.set_live_pref(true, cx))
                     .child("Turn on live monitoring"),
             )
         };
@@ -1112,7 +1112,7 @@ impl Facet {
                             )
                             .child(div().font_weight(FontWeight::SEMIBOLD).child("Live monitoring")),
                     )
-                    .child(div().max_w(px(640.)).text_size(px(13.)).text_color(t.colors.muted).child("Re-reads the hardware every two seconds and keeps the last three minutes of readings as small trend charts. Off by default so Facet stays idle when you are not looking."))
+                    .child(div().max_w(px(640.)).text_size(px(13.)).text_color(t.colors.muted).child("Re-reads the numbers that change (temperatures, memory, battery, GPU state) every two seconds and keeps the last three minutes as small trend charts. On by default; turn it off if you want Facet completely idle."))
                     .child(div().text_size(px(13.)).text_color(t.colors.muted).child(hotplug_line))
                     .child(div().text_size(px(13.)).text_color(t.colors.muted).child(match self.age_secs() {
                         Some(0) => "Hardware was last read just now.".to_owned(),

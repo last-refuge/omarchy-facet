@@ -21,7 +21,7 @@ pub fn timing(label: &str) {
     }
 }
 
-const USAGE: &str = "usage: facet-app [--fixture laptop|desktop|vm|loading|error] [--page <overview|category:storage|component:<id>|connections|preferences>] [--theme system|light|dark] [--size WxH] [--overlay search|export] [--live] [--demo-hotplug] [--query <text>]";
+const USAGE: &str = "usage: facet-app [--fixture laptop|desktop|vm|loading|error] [--page <overview|category:storage|component:<id>|connections|preferences>] [--theme system|light|dark] [--size WxH] [--overlay search|export] [--live|--no-live] [--demo-hotplug] [--query <text>]";
 
 struct Args {
     source: Source,
@@ -31,11 +31,11 @@ struct Args {
     overlay: Option<String>,
     query: Option<String>,
     demo_hotplug: bool,
-    live: bool,
+    live: Option<bool>,
 }
 
 fn parse_args() -> Result<Args, String> {
-    let mut args = Args { source: Source::Live, page: None, theme: None, size: None, overlay: None, query: None, demo_hotplug: false, live: false };
+    let mut args = Args { source: Source::Live, page: None, theme: None, size: None, overlay: None, query: None, demo_hotplug: false, live: None };
     let mut it = std::env::args().skip(1);
     while let Some(a) = it.next() {
         let mut value = |name: &str| it.next().ok_or_else(|| format!("{name} needs a value"));
@@ -67,7 +67,8 @@ fn parse_args() -> Result<Args, String> {
             }
             "--overlay" => args.overlay = Some(value("--overlay")?),
             "--demo-hotplug" => args.demo_hotplug = true,
-            "--live" => args.live = true,
+            "--live" => args.live = Some(true),
+            "--no-live" => args.live = Some(false),
             "--query" => args.query = Some(value("--query")?),
             "--help" | "-h" => return Err(String::new()),
             other => return Err(format!("unknown option {other:?}")),
@@ -113,13 +114,10 @@ fn main() {
             },
             move |window, cx| {
                 timing("window-created-ms");
-                let view = cx.new(|cx| Facet::new(source, page, theme, window, cx));
+                let view = cx.new(|cx| Facet::new(source, page, theme, live, window, cx));
                 view.update(cx, |this, cx| {
                     if demo_hotplug {
                         this.demo_hotplug(cx);
-                    }
-                    if live {
-                        this.set_live(true, cx);
                     }
                     match overlay.as_deref() {
                     Some("search") => this.open_search_with(query.as_deref().unwrap_or(""), window, cx),
