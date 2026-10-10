@@ -551,6 +551,18 @@ impl Facet {
         cx.notify();
     }
 
+    /// Change the temperature unit everywhere and remember it for the app, the CLI and the bar widget.
+    pub fn set_temperature_pref(&mut self, unit: facet_core::TemperatureUnit, cx: &mut Context<Self>) {
+        facet_core::set_temperature_unit(unit);
+        // Read the file, not the environment, so a one-off FACET_TEMPERATURE_UNIT is never made permanent.
+        let mut settings = facet_core::Settings::path().map(|p| facet_core::Settings::load_from(&p)).unwrap_or_default();
+        settings.temperature_unit = unit;
+        if let Err(e) = settings.save() {
+            self.show_toast(format!("Changed for now, but could not save the setting: {e}"), cx);
+        }
+        cx.notify();
+    }
+
     /// A user's choice: apply it and remember it.
     pub fn set_live_pref(&mut self, on: bool, cx: &mut Context<Self>) {
         self.set_live(on, cx);

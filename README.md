@@ -20,6 +20,7 @@ It only ever reads. It never changes your hardware.
 - **Search everything** with <kbd>Ctrl</kbd>+<kbd>K</kbd>. Click any value to copy it.
 - **Reports** as readable text or versioned JSON, with a preview, for bug reports and support.
 - **Live updates.** Plug something in and it appears. Live monitoring is on by default: temperatures, memory and battery refresh every two seconds with short trend charts (about 1–2% of one CPU core; turn it off in Preferences or with <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>M</kbd>).
+- **Fahrenheit or Celsius.** Temperatures default to Fahrenheit; switch in Preferences. The setting is shared by the app, the `facet` command and the Omarchy bar widget (`~/.config/facet/settings.json`).
 - **Light and dark themes**, full keyboard access, screen-reader landmarks and names.
 
 ## Privacy
@@ -74,6 +75,7 @@ make install PREFIX=~/.local
 facet                         # readable report
 facet --json                  # versioned JSON (see docs/report-schema.md)
 facet --include-identifiers   # include serials, UUIDs and MAC addresses
+facet --celsius               # temperature unit for this run (--fahrenheit too); also FACET_TEMPERATURE_UNIT=c
 facet --status                # a few live readings as JSON (about 35 ms; used by the bar widget)
 facet --diagnose              # what Facet can and cannot read here; collector timings
 ```

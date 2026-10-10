@@ -1703,6 +1703,7 @@ name = "facet-core"
 version = "1.0.1"
 dependencies = [
  "serde",
+ "serde_json",
 ]
 
 [[package]]

@@ -6,6 +6,7 @@ reading) in the bar, and a popup with the headline readings and a way into
 
 - **Click** the icon: popup with CPU temperature, memory in use, GPU temperature, battery and drive temperature.
 - **Right-click**: open Facet. **Middle-click**: refresh now.
+- Temperatures use the unit set in Facet's Preferences (Fahrenheit by default; `~/.config/facet/settings.json`).
 - It never wakes a sleeping discrete GPU: it shows "asleep, not queried" instead of a number.
 - It only reads. It does not write files, use the network, or change any hardware setting.
 

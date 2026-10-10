@@ -3,12 +3,14 @@ use std::time::Instant;
 
 use facet_core::{Availability, Category, Inventory, Report};
 
-const USAGE: &str = "usage: facet [--json] [--include-identifiers] [--status] [--diagnose] [--version] [--help]
+const USAGE: &str = "usage: facet [--json] [--include-identifiers] [--status] [--celsius|--fahrenheit] [--diagnose] [--version] [--help]
 
 Prints a hardware inventory for this machine.
 
   --json                 versioned JSON report (schema in docs/report-schema.md)
   --include-identifiers  include serial numbers, UUIDs and MAC addresses (hidden by default)
+  --celsius, --fahrenheit  temperature unit for this run (default: your saved setting, else Fahrenheit;
+                         change it in Facet's Preferences). JSON numbers are always Celsius.
   --status               a few live readings as JSON, fast enough to poll (used by the Omarchy bar widget)
   --diagnose             what Facet can and cannot read here, and how long each collector takes
   --version              print the version";
@@ -23,10 +25,19 @@ fn main() {
         println!("facet {}", env!("CARGO_PKG_VERSION"));
         return;
     }
-    if let Some(bad) = args.iter().find(|a| !matches!(a.as_str(), "--json" | "--include-identifiers" | "--diagnose" | "--status")) {
+    if let Some(bad) = args.iter().find(|a| !matches!(a.as_str(), "--json" | "--include-identifiers" | "--diagnose" | "--status" | "--celsius" | "--fahrenheit")) {
         eprintln!("facet: unknown option {bad:?}\n{USAGE}");
         std::process::exit(2);
     }
+    // Temperatures display in the saved unit (default Fahrenheit); a flag overrides it for this run.
+    let mut settings = facet_core::Settings::load();
+    if args.iter().any(|a| a == "--celsius") {
+        settings.temperature_unit = facet_core::TemperatureUnit::Celsius;
+    }
+    if args.iter().any(|a| a == "--fahrenheit") {
+        settings.temperature_unit = facet_core::TemperatureUnit::Fahrenheit;
+    }
+    settings.apply();
     if args.iter().any(|a| a == "--diagnose") {
         diagnose();
         return;
@@ -85,6 +96,7 @@ fn diagnose() {
     println!("facet {}", env!("CARGO_PKG_VERSION"));
     println!("kernel        {}", read("/proc/sys/kernel/osrelease").unwrap_or_else(|| "unknown".into()));
     println!("session       {}", std::env::var("XDG_SESSION_TYPE").unwrap_or_else(|_| "unknown".into()));
+    println!("temperature   {}", facet_core::temperature_unit().label());
     println!("wayland       {}", if std::env::var_os("WAYLAND_DISPLAY").is_some() { "display set" } else { "no display set" });
     println!("x11           {}", if std::env::var_os("DISPLAY").is_some() { "display set" } else { "no display set" });
 

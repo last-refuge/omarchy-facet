@@ -12,9 +12,10 @@ pub struct Reading {
     /// Stable machine name: `cpu_temperature`, `memory_in_use`, `gpu_temperature`, `battery`, `storage_temperature`.
     pub id: String,
     pub label: String,
-    /// Ready to show: `52 °C`, `28%`, or `—` when the value is unavailable.
+    /// Ready to show, in the user's temperature unit: `126 °F`, `28%`, or `—` when the value is unavailable.
     pub display: String,
-    /// Numeric value when there is one (°C or percent).
+    /// Numeric value when there is one: always degrees Celsius for temperatures (whatever unit is displayed),
+    /// or percent.
     pub value: Option<f64>,
     /// Plain-language context: the sensor, the status, or why the value is absent.
     pub note: String,

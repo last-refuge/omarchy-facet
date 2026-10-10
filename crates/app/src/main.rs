@@ -91,6 +91,8 @@ fn main() {
     };
     // Must run before any thread exists and before GPUI touches Vulkan.
     gpu_guard::apply();
+    // Temperatures display in the saved unit (default Fahrenheit).
+    facet_core::Settings::load().apply();
     env_logger::init();
 
     gpui_platform::application().with_assets(assets::Assets).run(move |cx: &mut App| {

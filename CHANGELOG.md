@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Temperature unit setting: Fahrenheit (default) or Celsius, in Preferences. Shared by the app, `facet` (`--celsius` / `--fahrenheit` for one run, `FACET_TEMPERATURE_UNIT=c`) and the bar widget. Stored readings and exported JSON always stay in degrees Celsius.
+
 - The app shows its version: "Facet 1.0.x" at the bottom of the sidebar ("v1.0.x" in the narrow rail) and an About section in Preferences. It is the same number `facet --version` prints.
 
 - Installer: fixed `curl | bash` stopping after the package install (pacman's prompt read the rest of the script from the pipe). The whole script is now parsed before it runs, and no command inherits the pipe as stdin. `scripts/installer-test.sh` guards it.

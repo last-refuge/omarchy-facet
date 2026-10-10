@@ -807,7 +807,10 @@ impl Facet {
         let (text, absent) = self.spec_text(s);
         let copy = text.clone();
         let trend = self.history_for(owner, &s.label).map(|h| {
-            let (lo, hi) = h.iter().fold((f64::MAX, f64::MIN), |(l, x), v| (l.min(*v), x.max(*v)));
+            // Samples are stored in Celsius; say the range in the unit the page shows.
+            let unit = facet_core::temperature_unit();
+            let shown = |v: f64| if matches!(s.value.value(), Some(Value::Celsius(_))) { unit.from_celsius(v) } else { v };
+            let (lo, hi) = h.iter().map(|v| shown(*v)).fold((f64::MAX, f64::MIN), |(l, x), v| (l.min(v), x.max(v)));
             (h.clone(), format!(". Trend over the last {} readings: {:.0} to {:.0}", h.len(), lo, hi))
         });
         let name = format!("{}: {}{}", s.label, text, trend.as_ref().map(|t| t.1.as_str()).unwrap_or(""));
@@ -1061,6 +1064,30 @@ impl Facet {
             );
         }
         let dark = t.mode == Mode::Dark;
+        let temp_unit = facet_core::temperature_unit();
+        let mut temp_seg = div().flex().self_start().rounded(px(8.)).border_1().border_color(t.colors.hairline_strong).overflow_hidden();
+        for (id, unit) in [("temp-f", facet_core::TemperatureUnit::Fahrenheit), ("temp-c", facet_core::TemperatureUnit::Celsius)] {
+            let active = temp_unit == unit;
+            temp_seg = temp_seg.child(
+                div()
+                    .id(id)
+                    .role(Role::Button)
+                    .aria_label(format!("{} ({})", unit.label(), unit.symbol()))
+                    .tab_index(0)
+                    .px(px(16.))
+                    .h(px(34.))
+                    .flex()
+                    .items_center()
+                    .cursor_pointer()
+                    .border_1()
+                    .border_color(transparent_black())
+                    .when(active, |d| d.bg(t.colors.accent).text_color(t.colors.on_accent).font_weight(FontWeight::SEMIBOLD))
+                    .when(!active, |d| d.hover(|s| s.bg(t.colors.hover)))
+                    .focus_visible(|s| s.border_color(t.colors.text))
+                    .on_activate(cx, move |this, _, cx| this.set_temperature_pref(unit, cx))
+                    .child(format!("{} {}", unit.label(), unit.symbol())),
+            );
+        }
         let live = self.live;
         let hotplug_line = match &self.hotplug {
             crate::app::Hotplug::Active => "Hotplug detection is on: plugging or unplugging hardware updates this window automatically.".to_owned(),
@@ -1076,6 +1103,16 @@ impl Facet {
             .child(self.heading("Preferences", "Facet only reads. It never changes your hardware.", cx))
             .child(self.section("Appearance", cx))
             .child(div().py(px(10.)).flex().flex_col().gap(px(8.)).child(seg).child(div().text_size(px(13.)).text_color(t.colors.muted).child(if dark { "Currently showing the dark variant." } else { "Currently showing the light variant." })))
+            .child(self.section("Temperature", cx))
+            .child(
+                div()
+                    .py(px(10.))
+                    .flex()
+                    .flex_col()
+                    .gap(px(8.))
+                    .child(temp_seg)
+                    .child(div().max_w(px(640.)).text_size(px(13.)).text_color(t.colors.muted).child("Used everywhere in Facet, in reports, in the facet command and in the Omarchy bar widget. Exported JSON always keeps degrees Celsius so it stays unambiguous.")),
+            )
             .child(self.section("Live updates", cx))
             .child(
                 div()

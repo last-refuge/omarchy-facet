@@ -54,7 +54,7 @@ Facet never invents a value: absent data keeps its state and `source`.
 
 ### `unit` (for `available` values)
 
-`text`, `bytes` (decimal, drive labels), `binary_bytes` (KiB/MiB/GiB), `hertz`, `celsius`, `percent`,
+`text`, `bytes` (decimal, drive labels), `binary_bytes` (KiB/MiB/GiB), `hertz`, `celsius` (always degrees Celsius in JSON, whatever unit the interface shows), `percent`,
 `count`, `bool`, `watts`, `volts`, `rpm`, `bps` (bits per second).
 
 ## Privacy

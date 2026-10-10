@@ -94,7 +94,7 @@ impl Value {
                     format!("{h} Hz")
                 }
             }
-            Value::Celsius(c) => format!("{c:.0} °C"),
+            Value::Celsius(c) => crate::units::temperature_unit().format_celsius(*c),
             Value::Percent(p) => format!("{p:.0}%"),
             Value::Count(n) => n.to_string(),
             Value::Bool(b) => if *b { "Yes".into() } else { "No".into() },

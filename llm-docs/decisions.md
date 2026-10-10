@@ -61,3 +61,9 @@ Format: decision, alternatives, why, date. Newest last.
 - **Alternatives:** off by default (the earlier choice, to meet the <1% idle target); a longer interval.
 - **Why:** the overview's trend lines and "Refreshing every 2 seconds" are central to the concept design, and a hardware monitor that is frozen by default reads as broken.
 - **Cost, and how it is contained:** about 1.0–1.7% of one core while focused (0.0% when turned off). A tick re-reads only processor, memory, power and sensors (graphics every 10 s); full reads happen on hotplug and Ctrl+R; a live tick never supersedes an in-flight full refresh; updates drop to every 10 s while the window is unfocused. The plan's <1% target stays defined "with live monitoring off".
+
+## 2026-10-10 — Temperature unit: Fahrenheit by default, one shared setting (user decision)
+- **Decision:** a Celsius/Fahrenheit preference, default Fahrenheit. Stored in `$XDG_CONFIG_HOME/facet/settings.json` and read by the app, the `facet` CLI and therefore the bar widget (which shows the CLI's ready-formatted `display`). `--celsius` / `--fahrenheit` and `FACET_TEMPERATURE_UNIT` override it for one run. Values are stored, charted and exported in Celsius; only display converts.
+- **Alternatives:** a locale-based default; per-surface settings; converting at collection time.
+- **Why:** one file means every surface agrees; keeping data in Celsius keeps JSON unambiguous and history/charts unit-free. The unit is a process-wide display setting in `facet-core` (set once at startup, or on a Preferences change) so no formatting call site needed changing; the library default stays Celsius so tests and library users are deterministic, and the apps apply the user's default (Fahrenheit).
+- **Limits:** the unit is global to the process, so a library consumer changing it affects all its threads. A `FACET_TEMPERATURE_UNIT` override is never written to the file.
