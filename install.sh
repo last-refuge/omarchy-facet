@@ -16,6 +16,8 @@
 #   --help          this text
 set -Eeuo pipefail
 
+main() {
+
 REPO="last-refuge/omarchy-facet"
 RELEASE_URL="https://github.com/$REPO/releases/latest/download"
 CLONE_URL="https://github.com/$REPO.git"
@@ -48,17 +50,22 @@ cleanup() { printf '%s' "$SHOW"; [[ -n "${WORK:-}" && -d "$WORK" ]] && rm -rf "$
 trap cleanup EXIT
 trap 'die "Interrupted."' INT TERM
 
+# Under `curl | bash` this script itself arrives on stdin, so no command may inherit it: anything that
+# reads stdin (pacman's "Proceed? [Y/n]", sudo, make) would swallow the rest of the script. Interactive
+# commands read the terminal instead; everything else reads nothing.
+if ( : </dev/tty ) 2>/dev/null; then TTYIN=/dev/tty; else TTYIN=/dev/null; fi
+
 # Run a command quietly with a spinner; its output goes to the log and is shown only if it fails.
 step() {
   local msg=$1; shift
   if (( DRY )); then note "would: $msg"; return 0; fi
   if (( ! TTY )); then
     printf '  …  %s\n' "$msg"
-    "$@" >>"$LOG" 2>&1 || { tail -n 12 "$LOG" | sed 's/^/     /' >&2; die "$msg failed."; }
+    "$@" </dev/null >>"$LOG" 2>&1 || { tail -n 12 "$LOG" | sed 's/^/     /' >&2; die "$msg failed."; }
     ok "$msg"
     return 0
   fi
-  "$@" >>"$LOG" 2>&1 &
+  "$@" </dev/null >>"$LOG" 2>&1 &
   local pid=$! i=0 frames='⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏'
   printf '%s' "$HIDE"
   while kill -0 "$pid" 2>/dev/null; do
@@ -67,6 +74,25 @@ step() {
   done
   printf '%s\r\033[K' "$SHOW"
   if wait "$pid"; then ok "$msg"; else printf '\r\033[K'; tail -n 12 "$LOG" | sed 's/^/     /' >&2; die "$msg failed."; fi
+}
+
+usage() {
+  cat <<'USAGE'
+Facet installer. Know your machine.
+
+  curl -fsSL https://raw.githubusercontent.com/last-refuge/omarchy-facet/master/install.sh | bash
+
+Arch Linux and Omarchy: installs a package (prebuilt when a release exists, built from source otherwise).
+Any other Linux: builds from source into ~/.local, no administrator access needed.
+
+  --source          build from source even if a prebuilt package is available
+  --prefix DIR      install into DIR without administrator access
+  --yes             do not ask for confirmation
+  --dry-run         show what would happen and change nothing
+  --bar / --no-bar  add (or skip) the Omarchy bar widget; by default Omarchy users are asked
+  --uninstall       remove Facet
+  --help            this text
+USAGE
 }
 
 # ---------------------------------------------------------------------------------------------
@@ -84,7 +110,7 @@ while (( $# )); do
     --no-bar) BAR=no ;;
     --uninstall) UNINSTALL=1 ;;
     --post-install-only) POST_ONLY=1 ;;
-    --help|-h) sed -n '2,17p' "${BASH_SOURCE[0]:-$0}" | sed 's/^# \{0,1\}//'; exit 0 ;;
+    --help|-h) usage; exit 0 ;;
     *) die "Unknown option $1 (try --help)." ;;
   esac
   shift
@@ -129,7 +155,7 @@ if (( UNINSTALL )); then
     fi
   elif pacman -Q facet >/dev/null 2>&1; then
     sudo_note
-    if (( DRY )); then note "would run: sudo pacman -Rns facet"; else sudo pacman -Rns $( (( ASSUME_YES )) && echo --noconfirm ) facet; ok "Removed the facet package"; fi
+    if (( DRY )); then note "would run: sudo pacman -Rns facet"; else sudo pacman -Rns $( (( ASSUME_YES )) && echo --noconfirm ) facet <"$TTYIN"; ok "Removed the facet package"; fi
   else
     note "Facet is not installed."
   fi
@@ -204,7 +230,7 @@ install_arch() {
       note "Building needs: ${pacman_pkgs[*]}"
       sudo_note
       if (( DRY )); then note "would run: sudo pacman -S --needed ${pacman_pkgs[*]}"; else
-        sudo pacman -S --needed $( (( ASSUME_YES )) && echo --noconfirm ) "${pacman_pkgs[@]}" || die "Could not install the build tools."
+        sudo pacman -S --needed $( (( ASSUME_YES )) && echo --noconfirm ) "${pacman_pkgs[@]}" <"$TTYIN" || die "Could not install the build tools."
       fi
     fi
     need_source
@@ -217,7 +243,7 @@ install_arch() {
 
   sudo_note
   if (( DRY )); then note "would run: sudo pacman -U <package>"; return 0; fi
-  sudo pacman -U $( (( ASSUME_YES )) && echo --noconfirm ) "$pkg" || die "pacman could not install the package."
+  sudo pacman -U $( (( ASSUME_YES )) && echo --noconfirm ) "$pkg" <"$TTYIN" || die "pacman could not install the package."
   ok "Installed"
 }
 
@@ -325,3 +351,6 @@ printf '  %sOr in the terminal%s\n     %sfacet%s            a readable report\n 
 if [[ -n "$PREFIX" ]]; then printf '  %sRemove it any time%s\n     %s./install.sh --uninstall --prefix %s%s\n\n' "$BOLD" "$RESET" "$DIM" "$PREFIX" "$RESET"
 elif (( IS_ARCH )); then printf '  %sRemove it any time%s\n     %ssudo pacman -Rns facet%s\n\n' "$BOLD" "$RESET" "$DIM" "$RESET"
 else printf '  %sRemove it any time%s\n     %s./install.sh --uninstall%s\n\n' "$BOLD" "$RESET" "$DIM" "$RESET"; fi
+}
+
+main "$@"

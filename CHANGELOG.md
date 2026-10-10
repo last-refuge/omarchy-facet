@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- Installer: fixed `curl | bash` stopping after the package install (pacman's prompt read the rest of the script from the pipe). The whole script is now parsed before it runs, and no command inherits the pipe as stdin. `scripts/installer-test.sh` guards it.
+
 ## 1.0.1
 
 - Installer updates: removes an older per-user copy in `~/.local` that could shadow the package, closes a running old Facet window, and refreshes an already-installed Omarchy bar widget (a development-linked widget is left alone).
