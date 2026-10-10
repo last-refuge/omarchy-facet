@@ -6,6 +6,7 @@ pkgdesc='Know your machine: a hardware explorer for Linux (inspection only)'
 arch=(x86_64)
 url='https://github.com/last-refuge/omarchy-facet'
 license=('MIT OR Apache-2.0')
+options=(!lto) # the Wayland FFI callbacks exported from Rust must survive link-time optimisation
 depends=(wayland libxkbcommon libxkbcommon-x11 libxcb fontconfig freetype2 vulkan-icd-loader gcc-libs glibc)
 makedepends=(cargo clang cmake git pkgconf)
 optdepends=(

@@ -264,7 +264,35 @@ impl Facet {
     fn overview(&mut self, narrow: bool, cx: &mut Context<Self>) -> AnyElement {
         let t = cx.theme().clone();
         let mut page = div().flex().flex_col();
-        page = page.child(self.heading("A closer look.", "Every component. One clear picture.", cx));
+        // Hero: the headline, and (in wide windows) the exploded-machine drawing, which doubles as the
+        // way into the connections view.
+        let hero = div()
+            .flex()
+            .items_start()
+            .justify_between()
+            .when(!narrow, |d| d.min_h(px(280.)))
+            .child(self.heading("A closer look.", "Every component. One clear picture.", cx))
+            .when(!narrow, |d| {
+                d.child(
+                    div()
+                        .id("explore-machine")
+                        .role(Role::Button)
+                        .aria_label("Explore how this machine is connected")
+                        .tab_index(0)
+                        .flex_none()
+                        .mt(px(-6.))
+                        .p(px(4.))
+                        .rounded(px(10.))
+                        .border_1()
+                        .border_color(transparent_black())
+                        .cursor_pointer()
+                        .hover(|s| s.bg(t.colors.hover))
+                        .focus_visible(|s| s.border_color(t.colors.accent))
+                        .on_activate(cx, |this, window, cx| this.go(Page::Connections, window, cx))
+                        .child(gpui::svg().path("brand/machine.svg").w(px(200.)).h(px(256.)).text_color(t.colors.muted.opacity(0.75))),
+                )
+            });
+        page = page.child(hero);
 
         if let Load::Failed(msg) = self.load.clone() {
             return page.child(self.error_panel(&msg, cx)).into_any_element();

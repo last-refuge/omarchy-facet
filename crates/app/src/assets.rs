@@ -22,7 +22,10 @@ icons!(
     "volume-2", "wifi", "x",
 );
 
-const BRAND: &[(&str, &[u8])] = &[("brand/mark.svg", include_bytes!("../../../assets/brand/mark.svg") as &[u8])];
+const BRAND: &[(&str, &[u8])] = &[
+    ("brand/mark.svg", include_bytes!("../../../assets/brand/mark.svg") as &[u8]),
+    ("brand/machine.svg", include_bytes!("../../../assets/brand/machine.svg") as &[u8]),
+];
 
 pub struct Assets;
 
