@@ -3,7 +3,7 @@
 use std::rc::Rc;
 
 use facet_core::{Availability, Category, Component, Spec};
-use gpui::{ClickEvent, Context, InteractiveElement, KeyDownEvent, StatefulInteractiveElement, Window};
+use gpui::{ClickEvent, Context, KeyDownEvent, StatefulInteractiveElement, Window};
 
 use crate::app::Facet;
 use gpui::{Div, Hsla, IntoElement, ParentElement, Styled, Svg, div, px, svg};

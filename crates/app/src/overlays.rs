@@ -1,7 +1,7 @@
 //! Modal surfaces: the search palette, the export dialog, and the copy toast.
 
 use gpui::{
-    AnyElement, ClickEvent, Context, FontWeight, InteractiveElement, IntoElement, MouseButton, ParentElement, Role, SharedString,
+    AnyElement, Context, FontWeight, InteractiveElement, IntoElement, MouseButton, ParentElement, Role, SharedString,
     StatefulInteractiveElement, Styled, Window, div, prelude::*, px, transparent_black,
 };
 

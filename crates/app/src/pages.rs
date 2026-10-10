@@ -3,7 +3,7 @@
 
 use facet_core::{Category, Component, Spec, Value};
 use gpui::{
-    AnyElement, ClickEvent, Context, Div, FontWeight, InteractiveElement, IntoElement, ParentElement, Role,
+    AnyElement, Context, Div, FontWeight, InteractiveElement, IntoElement, ParentElement, Role,
     SharedString, StatefulInteractiveElement, Styled, Window, div, prelude::*, px, transparent_black,
 };
 
