@@ -1,62 +1,22 @@
+//! Physical block devices from sysfs. Partitions and logical devices (dm, zram, loop, md) are excluded.
+
 use std::fs;
-use std::io::ErrorKind;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 
-use facet_core::{Field, StorageDevice, Transport};
+use facet_core::{Category, Component, Field, Spec, SpecGroup, Value};
 
-const SYS_BLOCK: &str = "/sys/block";
+use crate::util::{list_dir, parse_field, read_field, source, text_spec};
 
-/// Collect physical storage devices from sysfs.
-pub fn collect() -> Vec<StorageDevice> {
-    collect_from(Path::new(SYS_BLOCK))
+pub fn collect() -> Vec<Component> {
+    collect_from(Path::new("/"))
 }
 
-/// Collect from an arbitrary sysfs-shaped root (used by fixture tests).
-pub fn collect_from(root: &Path) -> Vec<StorageDevice> {
-    let Ok(entries) = fs::read_dir(root) else { return Vec::new() };
-    let mut names: Vec<String> = entries
-        .filter_map(Result::ok)
-        .map(|e| e.file_name().to_string_lossy().into_owned())
-        .filter(|n| is_physical(n))
-        .collect();
-    names.sort();
-    names.into_iter().map(|n| read_device(&root.join(&n), n)).collect()
+pub fn collect_from(root: &Path) -> Vec<Component> {
+    list_dir(root, "sys/block").into_iter().filter(|n| is_physical(n)).map(|n| read_device(root, &n)).collect()
 }
 
-/// Exclude device-mapper, zram, loop, ram and md: logical, not physical.
 fn is_physical(name: &str) -> bool {
-    !["dm-", "zram", "loop", "ram", "md", "sr", "fd"].iter().any(|p| name.starts_with(p))
-}
-
-fn read_attr(path: &Path) -> Field<String> {
-    let source = format!("sysfs:{}", path.display());
-    match fs::read_to_string(path) {
-        Ok(s) => {
-            let t = s.trim();
-            if t.is_empty() { Field::not_reported(source) } else { Field::available(t.to_owned(), source) }
-        }
-        Err(e) => match e.kind() {
-            ErrorKind::NotFound => Field::not_reported(source),
-            ErrorKind::PermissionDenied => Field::permission_required(source),
-            _ => Field::failed(e.to_string(), source),
-        },
-    }
-}
-
-fn map<T, U>(f: Field<T>, g: impl FnOnce(&T) -> Result<U, String>) -> Field<U> {
-    use facet_core::Availability::*;
-    let source = f.source;
-    match f.availability {
-        Available { value } => match g(&value) {
-            Ok(v) => Field::available(v, source),
-            Err(reason) => Field::failed(reason, source),
-        },
-        NotReported => Field::not_reported(source),
-        PermissionRequired => Field::permission_required(source),
-        Disconnected => Field { availability: Disconnected, source },
-        Redacted => Field { availability: Redacted, source },
-        Failed { reason } => Field::failed(reason, source),
-    }
+    !["dm-", "zram", "loop", "ram", "md", "sr", "fd", "nbd"].iter().any(|p| name.starts_with(p))
 }
 
 fn parse_flag(s: &String) -> Result<bool, String> {
@@ -67,108 +27,160 @@ fn parse_flag(s: &String) -> Result<bool, String> {
     }
 }
 
-fn read_device(dir: &Path, id: String) -> StorageDevice {
-    let dev = dir.join("device");
-    let transport = detect_transport(dir, &id);
-    StorageDevice {
-        model: read_attr(&dev.join("model")),
-        vendor: read_attr(&dev.join("vendor")),
-        serial: read_attr(&dev.join("serial")),
-        firmware: {
-            let f = read_attr(&dev.join("firmware_rev"));
-            if f.value().is_some() { f } else { read_attr(&dev.join("rev")) }
-        },
-        transport,
-        // sysfs `size` is always in 512-byte sectors regardless of device sector size.
-        capacity_bytes: map(read_attr(&dir.join("size")), |s| {
-            s.parse::<u64>().map(|n| n * 512).map_err(|e| e.to_string())
-        }),
-        rotational: map(read_attr(&dir.join("queue/rotational")), parse_flag),
-        removable: map(read_attr(&dir.join("removable")), parse_flag),
-        id,
+/// Interface name from the device name and the (symlink) path of its sysfs entry.
+pub fn transport(root: &Path, name: &str) -> Option<&'static str> {
+    if name.starts_with("nvme") {
+        return Some("NVMe");
+    }
+    if name.starts_with("mmcblk") {
+        return Some("SD/eMMC");
+    }
+    if name.starts_with("vd") {
+        return Some("VirtIO");
+    }
+    let link = fs::read_link(crate::util::at(root, &format!("sys/block/{name}"))).ok()?;
+    let p = link.to_string_lossy();
+    if p.contains("/usb") {
+        Some("USB")
+    } else if p.contains("/ata") {
+        Some("SATA")
+    } else if p.contains("/virtio") {
+        Some("VirtIO")
+    } else {
+        None
     }
 }
 
-fn detect_transport(dir: &Path, id: &str) -> Field<Transport> {
-    let source = format!("sysfs:{}", dir.display());
-    let t = if id.starts_with("nvme") {
-        Transport::Nvme
-    } else if id.starts_with("mmcblk") {
-        Transport::Mmc
-    } else if id.starts_with("vd") {
-        Transport::Virtio
-    } else {
-        // Resolve the device symlink and look for the bus in its path.
-        let resolved: PathBuf = fs::canonicalize(dir.join("device")).unwrap_or_default();
-        let p = resolved.to_string_lossy();
-        if p.contains("/usb") {
-            Transport::Usb
-        } else if p.contains("/ata") {
-            Transport::Sata
-        } else {
-            return Field::not_reported(source);
-        }
+fn media_type(rotational: Option<bool>, transport: Option<&str>) -> Option<&'static str> {
+    match (rotational, transport) {
+        (_, Some("NVMe")) => Some("NVMe solid-state drive"),
+        (Some(true), _) => Some("Hard disk drive"),
+        (Some(false), Some("SD/eMMC")) => Some("Flash storage"),
+        (Some(false), _) => Some("Solid-state drive"),
+        _ => None,
+    }
+}
+
+fn read_device(root: &Path, name: &str) -> Component {
+    let dev = format!("sys/block/{name}/device");
+    let model = read_field(root, &format!("{dev}/model"));
+    let vendor = read_field(root, &format!("{dev}/vendor"));
+    let serial = read_field(root, &format!("{dev}/serial"));
+    let firmware = {
+        let f = read_field(root, &format!("{dev}/firmware_rev"));
+        if f.value().is_some() { f } else { read_field(root, &format!("{dev}/rev")) }
     };
-    Field::available(t, source)
+    // sysfs `size` is always in 512-byte sectors regardless of the device's sector size.
+    let capacity = parse_field(read_field(root, &format!("sys/block/{name}/size")), |s| {
+        s.parse::<u64>().map(|n| Value::Bytes(n.saturating_mul(512))).map_err(|e| e.to_string())
+    });
+    let rotational = parse_field(read_field(root, &format!("sys/block/{name}/queue/rotational")), parse_flag);
+    let removable = parse_field(read_field(root, &format!("sys/block/{name}/removable")), parse_flag);
+    let iface = transport(root, name);
+    let media = media_type(rotational.value().copied(), iface);
+
+    let title = model.value().cloned().unwrap_or_else(|| format!("Storage device {name}"));
+    let subtitle = [capacity.value().map(Value::display), media.map(str::to_owned)].into_iter().flatten().collect::<Vec<_>>().join(" · ");
+
+    let bool_spec = |label: &str, f: Field<bool>| Spec::new(label, parse_field(f, |b| Ok(Value::Bool(*b))));
+    let mut c = Component::new(&format!("storage:{name}"), Category::Storage, &title);
+    if !subtitle.is_empty() {
+        c = c.subtitle(&subtitle);
+    }
+    c.summary(vec![
+        Spec::new("Capacity", capacity),
+        match media {
+            Some(m) => Spec::text("Type", m, &source(&format!("sys/block/{name}/queue/rotational"))),
+            None => Spec::missing("Type", &source(&format!("sys/block/{name}/queue/rotational"))),
+        },
+        match iface {
+            Some(i) => Spec::text("Interface", i, &source(&format!("sys/block/{name}"))),
+            None => Spec::missing("Interface", &source(&format!("sys/block/{name}"))),
+        },
+    ])
+    .group(SpecGroup::new("Identity", vec![
+        text_spec("Model", model),
+        text_spec("Vendor", vendor),
+        text_spec("Firmware", firmware),
+        text_spec("Serial number", serial).identifier(),
+    ]))
+    .group(SpecGroup::new("Device", vec![
+        Spec::text("Kernel name", name, &source(&format!("sys/block/{name}"))),
+        bool_spec("Removable", removable),
+        bool_spec("Rotational", rotational),
+    ]).technical())
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::util::testutil::Fx;
+    use facet_core::Availability;
 
-    fn fixture(files: &[(&str, &str)]) -> tempdir::Dir {
-        tempdir::Dir::with(files)
-    }
-
-    mod tempdir {
-        use std::{fs, path::{Path, PathBuf}};
-        pub struct Dir(PathBuf);
-        impl Dir {
-            pub fn with(files: &[(&str, &str)]) -> Self {
-                let p = std::env::temp_dir().join(format!("facet-test-{}-{:?}", std::process::id(), std::thread::current().id()));
-                let _ = fs::remove_dir_all(&p);
-                for (rel, body) in files {
-                    let f = p.join(rel);
-                    fs::create_dir_all(f.parent().unwrap()).unwrap();
-                    fs::write(f, body).unwrap();
-                }
-                Dir(p)
-            }
-            pub fn path(&self) -> &Path { &self.0 }
-        }
-        impl Drop for Dir { fn drop(&mut self) { let _ = fs::remove_dir_all(&self.0); } }
+    fn spec<'a>(c: &'a Component, label: &str) -> &'a Spec {
+        c.all_specs().find(|s| s.label == label).unwrap_or_else(|| panic!("no spec {label}"))
     }
 
     #[test]
-    fn parses_nvme_and_skips_logical() {
-        let d = fixture(&[
-            ("nvme0n1/device/model", "SAMSUNG TEST   \n"),
-            ("nvme0n1/device/firmware_rev", "4L1QKXF7\n"),
-            ("nvme0n1/size", "2000409264\n"),
-            ("nvme0n1/queue/rotational", "0\n"),
-            ("nvme0n1/removable", "0\n"),
-            ("dm-0/size", "100\n"),
-            ("zram0/size", "100\n"),
+    fn nvme_drive_with_logical_devices_skipped() {
+        let fx = Fx::new(&[
+            ("sys/block/nvme0n1/device/model", "SAMSUNG TEST   \n"),
+            ("sys/block/nvme0n1/device/firmware_rev", "4L1QKXF7\n"),
+            ("sys/block/nvme0n1/device/serial", "S0000EXAMPLE0001\n"),
+            ("sys/block/nvme0n1/size", "2000409264\n"),
+            ("sys/block/nvme0n1/queue/rotational", "0\n"),
+            ("sys/block/nvme0n1/removable", "0\n"),
+            ("sys/block/dm-0/size", "100\n"),
+            ("sys/block/zram0/size", "100\n"),
+            ("sys/block/loop3/size", "0\n"),
         ]);
-        let devs = collect_from(d.path());
-        assert_eq!(devs.len(), 1);
-        let n = &devs[0];
-        assert_eq!(n.model.value().map(String::as_str), Some("SAMSUNG TEST"));
-        assert_eq!(n.capacity_bytes.value(), Some(&(2000409264u64 * 512)));
-        assert_eq!(n.transport.value(), Some(&Transport::Nvme));
-        assert!(n.serial.value().is_none(), "missing serial is not-reported, not empty");
+        let v = collect_from(fx.path());
+        assert_eq!(v.len(), 1);
+        let n = &v[0];
+        assert_eq!(n.id, "storage:nvme0n1");
+        assert_eq!(n.title, "SAMSUNG TEST");
+        assert_eq!(spec(n, "Capacity").display(), "1.0 TB");
+        assert_eq!(spec(n, "Interface").display(), "NVMe");
+        assert_eq!(spec(n, "Type").display(), "NVMe solid-state drive");
+        assert!(spec(n, "Serial number").identifier);
+        assert_eq!(n.subtitle.as_deref(), Some("1.0 TB · NVMe solid-state drive"));
     }
 
     #[test]
-    fn malformed_values_fail_without_panicking() {
-        let d = fixture(&[("sda/size", "abc\n"), ("sda/removable", "7\n")]);
-        let devs = collect_from(d.path());
-        assert!(matches!(devs[0].capacity_bytes.availability, facet_core::Availability::Failed { .. }));
-        assert!(matches!(devs[0].removable.availability, facet_core::Availability::Failed { .. }));
+    fn sata_hdd_and_usb_detected_from_symlink_path() {
+        let fx = Fx::new(&[
+            ("sys/block/sda/device/model", "WDC WD10\n"),
+            ("sys/block/sda/device/rev", "01.0\n"),
+            ("sys/block/sda/size", "1953525168\n"),
+            ("sys/block/sda/queue/rotational", "1\n"),
+            ("sys/block/sdb/size", "62552064\n"),
+            ("sys/block/sdb/queue/rotational", "0\n"),
+        ]);
+        // Replace the directories' parents with symlinks is impractical; use link files for transport:
+        let fx2 = Fx::new(&[]);
+        fx2.symlink("sys/block/sda", "../devices/pci0000:00/0000:00:17.0/ata1/host0/target0:0:0/0:0:0:0/block/sda");
+        fx2.symlink("sys/block/sdb", "../devices/pci0000:00/0000:00:14.0/usb1/1-2/1-2:1.0/host6/target6:0:0/6:0:0:0/block/sdb");
+        assert_eq!(transport(fx2.path(), "sda"), Some("SATA"));
+        assert_eq!(transport(fx2.path(), "sdb"), Some("USB"));
+        let v = collect_from(fx.path());
+        assert_eq!(spec(&v[0], "Type").display(), "Hard disk drive");
+        assert_eq!(spec(&v[0], "Firmware").display(), "01.0");
+        assert_eq!(spec(&v[0], "Interface").display(), "Not reported");
     }
 
     #[test]
-    fn missing_root_yields_empty() {
+    fn malformed_and_missing_values_degrade_without_panicking() {
+        let fx = Fx::new(&[("sys/block/sda/size", "abc\n"), ("sys/block/sda/removable", "7\n")]);
+        let v = collect_from(fx.path());
+        let c = &v[0];
+        assert_eq!(c.title, "Storage device sda");
+        assert!(matches!(spec(c, "Capacity").value.availability, Availability::Failed { .. }));
+        assert!(matches!(spec(c, "Removable").value.availability, Availability::Failed { .. }));
+        assert_eq!(spec(c, "Model").display(), "Not reported");
+    }
+
+    #[test]
+    fn unreadable_root_yields_empty() {
         assert!(collect_from(Path::new("/nonexistent/facet")).is_empty());
     }
 }

@@ -1,39 +1,24 @@
-use facet_core::{Availability, Field, Report};
+use facet_core::Report;
+
+const USAGE: &str = "usage: facet [--json] [--include-identifiers] [--help]\n\nPrints a hardware inventory. Serial numbers, UUIDs and MAC addresses are hidden unless --include-identifiers is given.";
 
 fn main() {
     let args: Vec<String> = std::env::args().skip(1).collect();
+    if args.iter().any(|a| a == "--help" || a == "-h") {
+        println!("{USAGE}");
+        return;
+    }
+    if let Some(bad) = args.iter().find(|a| !matches!(a.as_str(), "--json" | "--include-identifiers")) {
+        eprintln!("facet: unknown option {bad:?}\n{USAGE}");
+        std::process::exit(2);
+    }
     let json = args.iter().any(|a| a == "--json");
     let include_ids = args.iter().any(|a| a == "--include-identifiers");
 
-    let mut report = Report::new(facet_collectors::storage::collect());
-    if !include_ids {
-        report.redact_identifiers();
-    }
-
+    let report = Report::new(facet_collectors::collect_all(), include_ids);
     if json {
         println!("{}", serde_json::to_string_pretty(&report).expect("report serializes"));
-        return;
+    } else {
+        print!("{}", report.to_text());
     }
-
-    for d in &report.storage {
-        println!("{}", d.id);
-        row("model", &d.model, |v| v.clone());
-        row("firmware", &d.firmware, |v| v.clone());
-        row("serial", &d.serial, |v| v.clone());
-        row("capacity", &d.capacity_bytes, |b| facet_core::format_bytes(*b));
-        row("transport", &d.transport, |t| format!("{t:?}"));
-        println!();
-    }
-}
-
-fn row<T>(label: &str, f: &Field<T>, show: impl Fn(&T) -> String) {
-    let text = match &f.availability {
-        Availability::Available { value } => show(value),
-        Availability::NotReported => "(not reported)".into(),
-        Availability::PermissionRequired => "(permission required)".into(),
-        Availability::Disconnected => "(disconnected)".into(),
-        Availability::Redacted => "(redacted)".into(),
-        Availability::Failed { reason } => format!("(failed: {reason})"),
-    };
-    println!("  {label:<10} {text}");
 }
