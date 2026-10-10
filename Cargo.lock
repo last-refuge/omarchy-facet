@@ -1666,7 +1666,7 @@ dependencies = [
 
 [[package]]
 name = "facet-app"
-version = "1.0.0"
+version = "1.0.1"
 dependencies = [
  "anyhow",
  "env_logger",
@@ -1682,7 +1682,7 @@ dependencies = [
 
 [[package]]
 name = "facet-cli"
-version = "1.0.0"
+version = "1.0.1"
 dependencies = [
  "facet-collectors",
  "facet-core",
@@ -1691,7 +1691,7 @@ dependencies = [
 
 [[package]]
 name = "facet-collectors"
-version = "1.0.0"
+version = "1.0.1"
 dependencies = [
  "facet-core",
  "libc",
@@ -1700,7 +1700,7 @@ dependencies = [
 
 [[package]]
 name = "facet-core"
-version = "1.0.0"
+version = "1.0.1"
 dependencies = [
  "serde",
 ]

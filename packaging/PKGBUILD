@@ -1,6 +1,6 @@
 # Maintainer: Facet authors
 pkgname=facet
-pkgver=1.0.0
+pkgver=1.0.1
 pkgrel=1
 pkgdesc='Know your machine: a hardware explorer for Linux (inspection only)'
 arch=(x86_64)
