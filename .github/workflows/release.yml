@@ -28,7 +28,8 @@ jobs:
           sudo -u builder bash -c "cd '$GITHUB_WORKSPACE' && scripts/build-package.sh"
       - name: Name the assets the installer expects
         run: |
-          cp target/package/facet-*-x86_64.pkg.tar.zst facet-x86_64.pkg.tar.zst
+          # The digit excludes makepkg's separate facet-debug-* package.
+          cp target/package/facet-[0-9]*-x86_64.pkg.tar.zst facet-x86_64.pkg.tar.zst
           sha256sum facet-x86_64.pkg.tar.zst > facet-x86_64.pkg.tar.zst.sha256
       - uses: softprops/action-gh-release@v2
         with:
