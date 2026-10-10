@@ -46,3 +46,12 @@ Format: decision, alternatives, why, date. Newest last.
 - **Decision:** light accent fill is `#D1452D` (brand concept `#D84B33`), dark `on_accent` is `#101312`; light "faint" text is `#636864`.
 - **Alternatives:** keep `#D84B33` and use large/bold-only text on it; dark text on vermilion.
 - **Why:** numeric WCAG check (unit test `theme::tests::text_pairs_meet_wcag_aa`): white on `#D84B33` is 4.22:1, below AA for 13 px semibold button labels; `#D1452D` gives 4.57:1 and still reads as the brand vermilion. Faint text on ivory was 4.23:1; now 5.04:1.
+
+## 2026-10-10 — No app screenshots committed
+- **Decision:** the repo contains the generated concept art (`design/concepts/`) but no screenshots of the running app.
+- **Alternatives:** force the window opaque with a Hyprland rule/`hyprctl eval`; fullscreen captures; crop bleed.
+- **Why:** Omarchy applies a default 0.985/0.96 window opacity, so captures of the real window show faint text from whatever is behind it (observed: other applications' content). GPUI on Linux cannot render offscreen (`render_to_image` is macOS/Windows/test only), and overriding the rule means changing the user's compositor configuration. `scripts/shot.sh` is for local design review only; its output must not be committed.
+
+## 2026-10-10 — Licence MIT OR Apache-2.0; third-party audit
+- **Decision:** Facet is `MIT OR Apache-2.0`. `scripts/license-audit.py` walks the shipped dependency graph (Linux) and fails on anything outside a permissive allow-list; `THIRD-PARTY-LICENSES.md` is generated from it.
+- **Result:** no GPL/AGPL crates; the 23 git-sourced crates (Zed's GPUI revision and forks) are Apache-2.0 or MIT; one unusual permissive licence (`bzip2-1.0.6`) allow-listed. Bundled assets: IBM Plex Sans and Lilex (SIL OFL 1.1), Lucide icons (ISC).

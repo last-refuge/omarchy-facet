@@ -58,6 +58,8 @@ fn curate(v: &mut Vec<Component>) {
             return true;
         }
         let kind = c.subtitle.as_deref().unwrap_or("");
+        // The subtitle reads "<kind> · <bus>", e.g. "Audio jack · Not specified".
+        let kind = kind.split(" · ").next().unwrap_or(kind);
         if matches!(kind, "Platform" | "Audio jack" | "Audio output (HDMI/DP)") || c.title == "PC Speaker" {
             return false;
         }
@@ -371,8 +373,8 @@ mod tests {
             c
         };
         let mut v = vec![
-            mk("input:event0", "Power Button", "Platform", None),
-            mk("input:event1", "HDA Intel PCH Mic", "Audio jack", None),
+            mk("input:event0", "Power Button", "Platform · Host", None),
+            mk("input:event1", "HDA Intel PCH Mic", "Audio jack · Not specified", None),
             mk("input:event2", "PC Speaker", "Input device", None),
             mk("input:event3", "ITE Keyboard", "Keyboard", Some("usb:1-6")),
             mk("input:event4", "AT keyboard", "Keyboard", None),

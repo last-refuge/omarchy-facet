@@ -10,6 +10,12 @@ fi
 XDG_STATE_HOME="${SHOT_STATE:-/tmp/facet-shot-state}" timeout -s KILL 30 ./target/release/facet-app "$@" >/dev/null 2>&1 &
 sleep "${WAIT:-2.5}"
 pid=$(pgrep -n -x facet-app)
+# Omarchy makes every window slightly translucent, which would bleed other windows' content into the
+# capture. Force only this window opaque (runtime property of our own window; no config is changed).
+addr=$(hyprctl clients -j | python3 -c 'import json,sys
+for c in json.load(sys.stdin):
+    if c["pid"]==int(sys.argv[1]): print(c["address"])' "$pid")
+[ -n "$addr" ] && hyprctl dispatch setprop "address:$addr" opaque 1 >/dev/null 2>&1 && sleep 0.4
 geo=$(hyprctl clients -j | python3 -c 'import json,sys
 for c in json.load(sys.stdin):
     if c["pid"]==int(sys.argv[1]): print("%d,%d %dx%d"%(*c["at"],*c["size"]))' "$pid")

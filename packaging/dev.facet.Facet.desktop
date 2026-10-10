@@ -1,0 +1,11 @@
+[Desktop Entry]
+Type=Application
+Name=Facet
+GenericName=Hardware Explorer
+Comment=Know your machine: browse every component, its specifications and health
+Exec=facet-app
+Icon=dev.facet.Facet
+Terminal=false
+Categories=System;Monitor;HardwareSettings;
+Keywords=hardware;device manager;cpu;gpu;memory;storage;usb;sensors;specs;
+StartupWMClass=dev.facet.Facet

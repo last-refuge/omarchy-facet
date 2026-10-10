@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="256" height="256" viewBox="0 0 256 256">
+  <title>Facet</title>
+  <rect x="16" y="16" width="224" height="224" rx="52" fill="#202523"/>
+  <!-- cut planes: a lowercase f built from angular facets -->
+  <path d="M104 208V92l36-36h56v34h-44v118z" fill="#D1452D"/>
+  <path d="M104 92l36-36v34h-36z" fill="#F4F1EA" opacity="0.92"/>
+  <path d="M60 118h124v30H60z" fill="#F4F1EA"/>
+  <path d="M60 118l24-0v30H60z" fill="#78917C"/>
+</svg>
