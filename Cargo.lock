@@ -1689,6 +1689,7 @@ name = "facet-collectors"
 version = "0.1.0"
 dependencies = [
  "facet-core",
+ "zbus",
 ]
 
 [[package]]
