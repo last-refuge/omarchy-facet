@@ -14,7 +14,7 @@ reading) in the bar, and a popup with the headline readings and a way into
 The Facet installer offers to add this for you on Omarchy:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/last-refuge/omarchy-facet/master/install.sh | bash
+curl -fsSL https://github.com/last-refuge/omarchy-facet/releases/latest/download/install.sh | bash
 ```
 
 Or add it yourself (Facet must be installed; the widget shows an install hint if it is not):

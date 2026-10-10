@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Facet installer. Know your machine.
 #
-#   curl -fsSL https://raw.githubusercontent.com/last-refuge/omarchy-facet/master/install.sh | bash
+#   curl -fsSL https://github.com/last-refuge/omarchy-facet/releases/latest/download/install.sh | bash
 #
 # Arch Linux and Omarchy: installs a package (prebuilt when a release exists, built from source otherwise).
 # Any other Linux: builds from source into ~/.local, no administrator access needed.
@@ -80,7 +80,7 @@ usage() {
   cat <<'USAGE'
 Facet installer. Know your machine.
 
-  curl -fsSL https://raw.githubusercontent.com/last-refuge/omarchy-facet/master/install.sh | bash
+  curl -fsSL https://github.com/last-refuge/omarchy-facet/releases/latest/download/install.sh | bash
 
 Arch Linux and Omarchy: installs a package (prebuilt when a release exists, built from source otherwise).
 Any other Linux: builds from source into ~/.local, no administrator access needed.

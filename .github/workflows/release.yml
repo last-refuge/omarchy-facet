@@ -1,6 +1,8 @@
 # Publishing a version: git tag v1.0.0 && git push origin v1.0.0
 # Builds the Arch package in a clean container and attaches it, with its checksum, to the release.
-# install.sh downloads exactly these two assets, so keep the names.
+# install.sh downloads exactly these two assets, so keep the names. The installer itself is attached too,
+# so the documented one-liner (releases/latest/download/install.sh) always serves the script that belongs to
+# the latest release, with no branch-cache delay.
 name: release
 on:
   push:
@@ -36,4 +38,5 @@ jobs:
           files: |
             facet-x86_64.pkg.tar.zst
             facet-x86_64.pkg.tar.zst.sha256
+            install.sh
           generate_release_notes: true

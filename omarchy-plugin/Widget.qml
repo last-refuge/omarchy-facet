@@ -53,7 +53,7 @@ BarWidget {
 
   function copyInstallCommand() {
     close()
-    Quickshell.execDetached(["sh", "-c", "printf %s 'curl -fsSL https://raw.githubusercontent.com/last-refuge/omarchy-facet/master/install.sh | bash' | wl-copy && omarchy-notification-send 'Facet: install command copied. Paste it in a terminal.'"])
+    Quickshell.execDetached(["sh", "-c", "printf %s 'curl -fsSL https://github.com/last-refuge/omarchy-facet/releases/latest/download/install.sh | bash' | wl-copy && omarchy-notification-send 'Facet: install command copied. Paste it in a terminal.'"])
   }
 
   // ---- data ----------------------------------------------------------------------------------

@@ -33,7 +33,7 @@ choose to show or include them. Hostnames and user names are never collected.
 **Arch Linux and Omarchy.** One command:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/last-refuge/omarchy-facet/master/install.sh | bash
+curl -fsSL https://github.com/last-refuge/omarchy-facet/releases/latest/download/install.sh | bash
 ```
 
 It installs a real package (so `pacman` can update and remove it), checks it works, and tells you how to
@@ -41,7 +41,7 @@ open it. On Omarchy, press <kbd>Super</kbd>+<kbd>Space</kbd> and type "Facet". I
 checksum-verified package when a release exists and otherwise builds from source in a few minutes. It asks
 for your password only for the final `pacman -U`.
 
-Prefer to read it first? `install.sh` is short. Options: `--dry-run` shows the plan and changes nothing,
+The installer is attached to every release, so this command always runs the script that matches the latest version. Prefer to read it first? `install.sh` is short. Options: `--dry-run` shows the plan and changes nothing,
 `--source` forces a source build, `--prefix DIR` installs without administrator access, `--bar` / `--no-bar`
 adds or skips the Omarchy bar widget (by default Omarchy users are asked), `--uninstall` removes it, and
 `--yes` skips confirmations (it never edits your shell config on its own).
