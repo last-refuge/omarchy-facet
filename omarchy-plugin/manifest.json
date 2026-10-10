@@ -1,0 +1,38 @@
+{
+  "schemaVersion": 1,
+  "id": "facet.hardware",
+  "name": "Facet",
+  "version": "1.0.0",
+  "author": "Facet authors",
+  "description": "Live hardware readings in the bar, and a way into Facet, the hardware explorer.",
+  "kinds": ["bar-widget"],
+  "entryPoints": { "barWidget": "Widget.qml" },
+  "barWidget": {
+    "displayName": "Facet",
+    "description": "CPU temperature (or another reading) in the bar. Click for live hardware readings; right-click opens Facet.",
+    "category": "System",
+    "allowMultiple": false,
+    "defaultSection": "right",
+    "defaults": { "pillReading": "cpu_temperature", "refreshIntervalSec": 15 },
+    "schema": [
+      {
+        "key": "pillReading",
+        "type": "enum",
+        "label": "Show in the bar",
+        "options": ["cpu_temperature", "memory_in_use", "gpu_temperature", "battery", "storage_temperature", "none"],
+        "defaultValue": "cpu_temperature",
+        "description": "Which reading sits next to the icon. A sleeping discrete GPU is never woken to read it."
+      },
+      {
+        "key": "refreshIntervalSec",
+        "type": "integer",
+        "label": "Refresh interval (seconds)",
+        "min": 5,
+        "max": 300,
+        "step": 5,
+        "defaultValue": 15,
+        "description": "How often the bar value updates. The popup refreshes faster while it is open."
+      }
+    ]
+  }
+}

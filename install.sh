@@ -11,6 +11,7 @@
 #   --prefix DIR    install into DIR without administrator access (default for non-Arch: ~/.local)
 #   --yes           do not ask for confirmation
 #   --dry-run       show what would happen and change nothing
+#   --bar / --no-bar  add (or skip) the Omarchy bar widget; by default Omarchy users are asked
 #   --uninstall     remove Facet
 #   --help          this text
 set -Eeuo pipefail
@@ -71,7 +72,7 @@ step() {
 # ---------------------------------------------------------------------------------------------
 # Arguments
 # ---------------------------------------------------------------------------------------------
-FORCE_SOURCE=0; PREFIX=""; ASSUME_YES=0; DRY=0; UNINSTALL=0
+FORCE_SOURCE=0; PREFIX=""; ASSUME_YES=0; DRY=0; UNINSTALL=0; BAR=ask
 while (( $# )); do
   case "$1" in
     --source) FORCE_SOURCE=1 ;;
@@ -79,8 +80,10 @@ while (( $# )); do
     --prefix=*) PREFIX=${1#--prefix=} ;;
     --yes|-y) ASSUME_YES=1 ;;
     --dry-run) DRY=1 ;;
+    --bar) BAR=yes ;;
+    --no-bar) BAR=no ;;
     --uninstall) UNINSTALL=1 ;;
-    --help|-h) sed -n '2,16p' "${BASH_SOURCE[0]:-$0}" | sed 's/^# \{0,1\}//'; exit 0 ;;
+    --help|-h) sed -n '2,17p' "${BASH_SOURCE[0]:-$0}" | sed 's/^# \{0,1\}//'; exit 0 ;;
     *) die "Unknown option $1 (try --help)." ;;
   esac
   shift
@@ -128,6 +131,10 @@ if (( UNINSTALL )); then
     if (( DRY )); then note "would run: sudo pacman -Rns facet"; else sudo pacman -Rns $( (( ASSUME_YES )) && echo --noconfirm ) facet; ok "Removed the facet package"; fi
   else
     note "Facet is not installed."
+  fi
+  PLUGIN_DIR="$HOME/.config/omarchy/plugins/facet.hardware"
+  if [[ -e "$PLUGIN_DIR" || -L "$PLUGIN_DIR" ]] && command -v omarchy >/dev/null 2>&1; then
+    if (( DRY )); then note "would remove the Facet bar widget"; else omarchy plugin remove facet.hardware --yes >/dev/null 2>&1 || rm -rf "$PLUGIN_DIR"; ok "Removed the Facet bar widget"; fi
   fi
   STATE="${XDG_STATE_HOME:-$HOME/.local/state}/facet"
   # Settings are the user's data: only ever removed after an explicit, interactive yes (never by --yes).
@@ -231,6 +238,34 @@ install_prefix() {
 }
 
 if (( IS_ARCH )) && [[ -z "$PREFIX" ]]; then install_arch; else install_prefix; fi
+
+# ---- Omarchy bar widget (optional) ----------------------------------------------------------------
+# Plugins are plain folders in ~/.config/omarchy/plugins; Omarchy documents copy, rescan, enable as the
+# supported by-hand route. It edits the user's shell config, so it is always opt-in.
+install_bar_widget() {
+  (( IS_OMARCHY )) && command -v omarchy >/dev/null 2>&1 || return 0
+  [[ "$BAR" == no ]] && return 0
+  local src_dir="" d
+  for d in /usr/share/facet/omarchy-plugin "${PREFIX:-$HOME/.local}/share/facet/omarchy-plugin" "$SRC/omarchy-plugin"; do
+    [[ -n "$d" && -f "$d/manifest.json" ]] && { src_dir=$d; break; }
+  done
+  [[ -n "$src_dir" ]] || return 0
+  if [[ "$BAR" == ask ]]; then
+    (( ASSUME_YES )) && return 0   # --yes never edits shell config on its own; use --bar
+    (( DRY )) && { note "would offer to add the Facet bar widget"; return 0; }
+    confirm "Add a Facet widget to your Omarchy bar (live CPU temperature and a hardware popup)?" || return 0
+  fi
+  if (( DRY )); then note "would add the Facet bar widget to your Omarchy bar"; return 0; fi
+  local target="$HOME/.config/omarchy/plugins/facet.hardware"
+  mkdir -p "$HOME/.config/omarchy/plugins"
+  rm -rf "$target"; cp -r "$src_dir" "$target"
+  if omarchy-shell shell rescanPlugins >>"$LOG" 2>&1 && omarchy plugin enable facet.hardware >>"$LOG" 2>&1; then
+    ok "Added the Facet widget to your bar (right-click it to open Facet)"
+  else
+    warn "Copied the widget, but could not enable it. Run: omarchy plugin enable facet.hardware"
+  fi
+}
+if (( ! DRY )) || [[ "$BAR" != no ]]; then install_bar_widget; fi
 
 # ---- Check it works --------------------------------------------------------------------------------
 if (( ! DRY )); then

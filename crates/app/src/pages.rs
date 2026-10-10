@@ -819,44 +819,11 @@ impl Facet {
     }
 }
 
-/// Up to three headline readings for the overview. Absent values are explained, never zero.
+/// The first three headline readings for the overview. Shared with the CLI and the bar widget.
 fn live_readings(inv: &facet_core::Inventory) -> Vec<(String, String, String)> {
-    let mut out = Vec::new();
-    let find = |pred: &dyn Fn(&Component, &Spec) -> bool| -> Option<(&Component, &Spec)> {
-        inv.components.iter().find_map(|c| c.all_specs().find(|s| s.live && pred(c, s)).map(|s| (c, s)))
-    };
-    let celsius = |s: &Spec| matches!(s.value.value(), Some(Value::Celsius(_)));
-
-    if let Some((_, s)) = find(&|c, s| c.id.starts_with("sensors:") && celsius(s) && (s.label.contains("Package") || s.label.contains("Tctl") || s.label.contains("Tdie"))) {
-        out.push(("CPU temperature".to_owned(), s.display(), "Package sensor".to_owned()));
-    } else if let Some((c, s)) = find(&|c, s| c.category == Category::Processor && celsius(s)) {
-        out.push(("CPU temperature".to_owned(), s.display(), c.title.clone()));
-    }
-    if let Some((_, s)) = find(&|c, s| c.id == "memory:system" && s.label == "In use") {
-        out.push(("Memory in use".to_owned(), s.display(), "Of installed memory".to_owned()));
-    } else if let Some(mem) = inv.get("memory:system") {
-        let bytes = |label: &str| mem.all_specs().find(|s| s.label == label).and_then(|s| match s.value.value() {
-            Some(Value::BinaryBytes(b) | Value::Bytes(b)) => Some(*b),
-            _ => None,
-        });
-        if let (Some(total), Some(avail)) = (bytes("Usable memory"), bytes("Available memory"))
-            && total > 0
-            && avail <= total
-        {
-            let pct = 100.0 * (total - avail) as f64 / total as f64;
-            out.push(("Memory in use".to_owned(), Value::Percent(pct).display(), "Of usable memory".to_owned()));
-        }
-    }
-    let gpus: Vec<(&Component, &Spec)> = inv
-        .in_category(Category::Graphics)
-        .filter_map(|g| g.all_specs().find(|s| s.label == "Temperature").map(|s| (g, s)))
-        .collect();
-    if let Some((g, s)) = gpus.iter().find(|(_, s)| s.is_available()) {
-        out.push(("GPU temperature".to_owned(), s.display(), g.title.clone()));
-    } else if let Some((g, s)) = gpus.iter().find(|(_, s)| s.value.source.contains("suspended")).or(gpus.first()) {
-        let asleep = s.value.source.contains("suspended");
-        let note = if asleep { format!("{} is asleep; not queried so it stays asleep", g.title) } else { format!("{}: the driver doesn't report it", g.title) };
-        out.push(("GPU temperature".to_owned(), "— °C".to_owned(), note));
-    }
-    out
+    facet_core::headline_readings(inv)
+        .into_iter()
+        .filter(|r| matches!(r.id.as_str(), "cpu_temperature" | "memory_in_use" | "gpu_temperature"))
+        .map(|r| (r.label, if r.available { r.display } else { "— °C".to_owned() }, r.note))
+        .collect()
 }

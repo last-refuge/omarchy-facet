@@ -75,6 +75,12 @@ facet --include-identifiers   # include serials, UUIDs and MAC addresses
 facet --diagnose              # what Facet can and cannot read here; collector timings
 ```
 
+## Omarchy bar widget
+
+On Omarchy the installer offers to add a small widget to your bar: live CPU temperature, and a popup with
+memory, GPU, battery and drive readings plus a button that opens Facet. See
+[`omarchy-plugin/`](omarchy-plugin/README.md). It never wakes a sleeping GPU, and it only reads.
+
 ## What needs administrator access
 
 Normal browsing never does. Some firmware details are root-only on most systems and show as

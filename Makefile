@@ -13,6 +13,7 @@ appdir = $(DESTDIR)$(PREFIX)/share/applications
 icondir = $(DESTDIR)$(PREFIX)/share/icons/hicolor/scalable/apps
 docdir = $(DESTDIR)$(PREFIX)/share/doc/facet
 licdir = $(DESTDIR)$(PREFIX)/share/licenses/facet
+plugindir = $(DESTDIR)$(PREFIX)/share/facet/omarchy-plugin
 
 .PHONY: build install uninstall test clean
 
@@ -26,6 +27,7 @@ install: build
 	install -d $(appdir)
 	sed 's|^Exec=facet-app|Exec=$(PREFIX)/bin/facet-app|' packaging/dev.facet.Facet.desktop > $(appdir)/dev.facet.Facet.desktop
 	install -Dm644 assets/brand/facet.svg $(icondir)/dev.facet.Facet.svg
+	install -Dm644 omarchy-plugin/manifest.json omarchy-plugin/Widget.qml omarchy-plugin/README.md -t $(plugindir)
 	install -Dm644 README.md CHANGELOG.md docs/report-schema.md -t $(docdir)
 	install -Dm644 LICENSE-MIT LICENSE-APACHE THIRD-PARTY-LICENSES.md -t $(licdir)
 	install -Dm644 assets/fonts/IBMPlexSans-LICENSE.txt $(licdir)/IBMPlexSans-OFL.txt
@@ -36,7 +38,7 @@ install: build
 
 uninstall:
 	rm -f $(bindir)/facet $(bindir)/facet-app $(appdir)/dev.facet.Facet.desktop $(icondir)/dev.facet.Facet.svg
-	rm -rf $(docdir) $(licdir)
+	rm -rf $(docdir) $(licdir) $(DESTDIR)$(PREFIX)/share/facet
 
 test:
 	$(CARGO) test --workspace --locked

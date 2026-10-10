@@ -40,6 +40,7 @@ package() {
   install -Dm755 target/release/facet-app "$pkgdir/usr/bin/facet-app"
   install -Dm644 packaging/dev.facet.Facet.desktop "$pkgdir/usr/share/applications/dev.facet.Facet.desktop"
   install -Dm644 assets/brand/facet.svg "$pkgdir/usr/share/icons/hicolor/scalable/apps/dev.facet.Facet.svg"
+  install -Dm644 omarchy-plugin/manifest.json omarchy-plugin/Widget.qml omarchy-plugin/README.md -t "$pkgdir/usr/share/$pkgname/omarchy-plugin"
   install -Dm644 README.md CHANGELOG.md docs/report-schema.md -t "$pkgdir/usr/share/doc/$pkgname"
   install -Dm644 LICENSE-MIT LICENSE-APACHE THIRD-PARTY-LICENSES.md -t "$pkgdir/usr/share/licenses/$pkgname"
   install -Dm644 assets/fonts/IBMPlexSans-LICENSE.txt "$pkgdir/usr/share/licenses/$pkgname/IBMPlexSans-OFL.txt"

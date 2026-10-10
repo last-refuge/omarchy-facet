@@ -3,12 +3,13 @@ use std::time::Instant;
 
 use facet_core::{Availability, Category, Inventory, Report};
 
-const USAGE: &str = "usage: facet [--json] [--include-identifiers] [--diagnose] [--version] [--help]
+const USAGE: &str = "usage: facet [--json] [--include-identifiers] [--status] [--diagnose] [--version] [--help]
 
 Prints a hardware inventory for this machine.
 
   --json                 versioned JSON report (schema in docs/report-schema.md)
   --include-identifiers  include serial numbers, UUIDs and MAC addresses (hidden by default)
+  --status               a few live readings as JSON, fast enough to poll (used by the Omarchy bar widget)
   --diagnose             what Facet can and cannot read here, and how long each collector takes
   --version              print the version";
 
@@ -22,12 +23,16 @@ fn main() {
         println!("facet {}", env!("CARGO_PKG_VERSION"));
         return;
     }
-    if let Some(bad) = args.iter().find(|a| !matches!(a.as_str(), "--json" | "--include-identifiers" | "--diagnose")) {
+    if let Some(bad) = args.iter().find(|a| !matches!(a.as_str(), "--json" | "--include-identifiers" | "--diagnose" | "--status")) {
         eprintln!("facet: unknown option {bad:?}\n{USAGE}");
         std::process::exit(2);
     }
     if args.iter().any(|a| a == "--diagnose") {
         diagnose();
+        return;
+    }
+    if args.iter().any(|a| a == "--status") {
+        status();
         return;
     }
     let json = args.iter().any(|a| a == "--json");
@@ -39,6 +44,27 @@ fn main() {
     } else {
         print!("{}", report.to_text());
     }
+}
+
+/// Headline readings only, from the cheap collectors: safe to poll every few seconds.
+fn status() {
+    const NEEDED: [&str; 6] = ["system", "processor", "memory", "graphics", "power", "sensors"];
+    let mut inv = Inventory::default();
+    for (name, collect) in facet_collectors::COLLECTORS {
+        if NEEDED.contains(name)
+            && let Ok(c) = std::panic::catch_unwind(collect)
+        {
+            inv.components.extend(c);
+        }
+    }
+    let machine = inv.in_category(Category::System).next().map(|c| c.title.clone()).unwrap_or_default();
+    let out = serde_json::json!({
+        "schema_version": 1,
+        "generator": format!("facet {}", env!("CARGO_PKG_VERSION")),
+        "machine": machine,
+        "readings": facet_core::headline_readings(&inv),
+    });
+    println!("{}", serde_json::to_string(&out).expect("status serializes"));
 }
 
 fn read(path: &str) -> Option<String> {
