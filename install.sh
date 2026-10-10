@@ -72,7 +72,7 @@ step() {
 # ---------------------------------------------------------------------------------------------
 # Arguments
 # ---------------------------------------------------------------------------------------------
-FORCE_SOURCE=0; PREFIX=""; ASSUME_YES=0; DRY=0; UNINSTALL=0; BAR=ask
+FORCE_SOURCE=0; PREFIX=""; ASSUME_YES=0; DRY=0; UNINSTALL=0; BAR=ask; POST_ONLY=0
 while (( $# )); do
   case "$1" in
     --source) FORCE_SOURCE=1 ;;
@@ -83,6 +83,7 @@ while (( $# )); do
     --bar) BAR=yes ;;
     --no-bar) BAR=no ;;
     --uninstall) UNINSTALL=1 ;;
+    --post-install-only) POST_ONLY=1 ;;
     --help|-h) sed -n '2,17p' "${BASH_SOURCE[0]:-$0}" | sed 's/^# \{0,1\}//'; exit 0 ;;
     *) die "Unknown option $1 (try --help)." ;;
   esac
@@ -237,11 +238,36 @@ install_prefix() {
   case ":$PATH:" in *":$p/bin:"*) ;; *) warn "$p/bin is not on your PATH; add it to run 'facet' and 'facet-app' by name." ;; esac
 }
 
-if (( IS_ARCH )) && [[ -z "$PREFIX" ]]; then install_arch; else install_prefix; fi
+if (( POST_ONLY )); then :; elif (( IS_ARCH )) && [[ -z "$PREFIX" ]]; then install_arch; else install_prefix; fi
 
-# ---- Omarchy bar widget (optional) ----------------------------------------------------------------
+# ---- After installing: tidy up, stop the old app, refresh the widget ---------------------------------
+# A per-user copy in ~/.local (from an earlier `--prefix` install) would sit next to the package and can win
+# on PATH, so a system package install removes it. It is Facet's own leftover, never the user's data.
+cleanup_user_copy() {
+  [[ -z "$PREFIX" ]] || return 0
+  local p="$HOME/.local"
+  [[ -e "$p/bin/facet" || -e "$p/bin/facet-app" ]] || return 0
+  if (( DRY )); then note "would remove the older per-user copy of Facet in ~/.local"; return 0; fi
+  rm -f "$p/bin/facet" "$p/bin/facet-app" "$p/share/applications/dev.facet.Facet.desktop" "$p/share/icons/hicolor/scalable/apps/dev.facet.Facet.svg"
+  rm -rf "$p/share/doc/facet" "$p/share/licenses/facet" "$p/share/facet"
+  ok "Removed an older per-user copy of Facet in ~/.local (the package replaces it)"
+}
+
+# A running window keeps the old program in memory until it is closed. Facet only reads, so there is
+# nothing to save; closing it means the next launch is the new version.
+stop_running() {
+  pgrep -x facet-app >/dev/null 2>&1 || return 0
+  if (( DRY )); then note "would close the running Facet window so the next launch is the new version"; return 0; fi
+  pkill -TERM -x facet-app 2>/dev/null || true
+  local i
+  for i in 1 2 3 4 5 6 7 8 9 10; do pgrep -x facet-app >/dev/null 2>&1 || break; sleep 0.5; done   # teardown can take a moment
+  pgrep -x facet-app >/dev/null 2>&1 && pkill -KILL -x facet-app 2>/dev/null || true
+  ok "Closed the running Facet window; open it again to use the new version"
+}
+
 # Plugins are plain folders in ~/.config/omarchy/plugins; Omarchy documents copy, rescan, enable as the
-# supported by-hand route. It edits the user's shell config, so it is always opt-in.
+# supported by-hand route. A new install edits the user's shell config, so it is opt-in; refreshing a widget
+# that is already installed is just an update and needs no question.
 install_bar_widget() {
   (( IS_OMARCHY )) && command -v omarchy >/dev/null 2>&1 || return 0
   [[ "$BAR" == no ]] && return 0
@@ -250,22 +276,33 @@ install_bar_widget() {
     [[ -n "$d" && -f "$d/manifest.json" ]] && { src_dir=$d; break; }
   done
   [[ -n "$src_dir" ]] || return 0
-  if [[ "$BAR" == ask ]]; then
-    (( ASSUME_YES )) && return 0   # --yes never edits shell config on its own; use --bar
+  local target="$HOME/.config/omarchy/plugins/facet.hardware" updating=0
+  if [[ -L "$target" ]]; then
+    note "The Facet bar widget is linked to a development folder ($(readlink "$target")); left as it is."
+    return 0
+  fi
+  [[ -d "$target" ]] && updating=1
+  if (( ! updating )) && [[ "$BAR" == ask ]]; then
+    (( ASSUME_YES )) && return 0   # --yes never adds to shell config on its own; use --bar
     (( DRY )) && { note "would offer to add the Facet bar widget"; return 0; }
     confirm "Add a Facet widget to your Omarchy bar (live CPU temperature and a hardware popup)?" || return 0
   fi
-  if (( DRY )); then note "would add the Facet bar widget to your Omarchy bar"; return 0; fi
-  local target="$HOME/.config/omarchy/plugins/facet.hardware"
+  if (( DRY )); then note "would $( (( updating )) && echo refresh || echo add ) the Facet bar widget"; return 0; fi
   mkdir -p "$HOME/.config/omarchy/plugins"
   rm -rf "$target"; cp -r "$src_dir" "$target"
-  if omarchy-shell shell rescanPlugins >>"$LOG" 2>&1 && omarchy plugin enable facet.hardware >>"$LOG" 2>&1; then
+  # Saving files under plugins/ reloads them on its own; the rescan makes it certain.
+  omarchy-shell shell rescanPlugins >>"$LOG" 2>&1 || true
+  if (( updating )); then
+    ok "Refreshed the Facet bar widget"
+  elif omarchy plugin enable facet.hardware >>"$LOG" 2>&1; then
     ok "Added the Facet widget to your bar (right-click it to open Facet)"
   else
     warn "Copied the widget, but could not enable it. Run: omarchy plugin enable facet.hardware"
   fi
 }
-if (( ! DRY )) || [[ "$BAR" != no ]]; then install_bar_widget; fi
+cleanup_user_copy
+stop_running
+install_bar_widget
 
 # ---- Check it works --------------------------------------------------------------------------------
 if (( ! DRY )); then

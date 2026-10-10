@@ -28,8 +28,9 @@ BarWidget {
   // Nerd Font microchip glyph; the value follows when one is chosen and available.
   readonly property string pillText: "" + (pill && pill.available ? "  " + pill.display : "")
 
-  // PATH for the shell process may not include ~/.local/bin (where a per-user install lands).
-  readonly property string pathPrefix: "PATH=\"$HOME/.local/bin:/usr/local/bin:$PATH\"; "
+  // The shell's PATH may not include ~/.local/bin (where a per-user install lands). It is appended, never
+  // prepended, so a packaged install in /usr/bin always wins over a stale per-user copy.
+  readonly property string pathPrefix: "PATH=\"$PATH:/usr/local/bin:$HOME/.local/bin\"; "
 
   // ---- bar-panel contract (the bar routes open/close/toggle through these) -------------------
   readonly property bool opened: popupOpen

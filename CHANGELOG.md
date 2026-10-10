@@ -1,5 +1,10 @@
 # Changelog
 
+## Unreleased
+
+- Installer updates: removes an older per-user copy in `~/.local` that could shadow the package, closes a running old Facet window, and refreshes an already-installed Omarchy bar widget (a development-linked widget is left alone).
+- The bar widget now prefers the packaged `facet` over a per-user copy.
+
 ## 1.0.0
 
 First release. Facet is an inspection-only hardware explorer for Linux, written in Rust with GPUI.
