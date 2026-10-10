@@ -1668,11 +1668,15 @@ dependencies = [
 name = "facet-app"
 version = "0.1.0"
 dependencies = [
+ "anyhow",
  "env_logger",
  "facet-collectors",
  "facet-core",
  "gpui",
  "gpui_platform",
+ "serde",
+ "serde_json",
+ "unicode-segmentation",
 ]
 
 [[package]]

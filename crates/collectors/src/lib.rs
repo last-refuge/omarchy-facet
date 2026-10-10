@@ -16,20 +16,23 @@ pub mod storage;
 pub mod system;
 pub mod util;
 
-use facet_core::Inventory;
+use facet_core::{Component, Inventory};
 
-/// Run every collector against the live system.
+/// Every collector, fastest first. The UI runs each independently so slow ones fill in later.
+pub const COLLECTORS: &[(&str, fn() -> Vec<Component>)] = &[
+    ("system", system::collect),
+    ("processor", processor::collect),
+    ("memory", memory::collect),
+    ("graphics", graphics::collect),
+    ("storage", storage::collect),
+    ("network", network::collect),
+    ("displays", displays::collect),
+    ("peripherals", peripherals::collect),
+    ("power", power::collect),
+    ("sensors", sensors::collect),
+];
+
+/// Run every collector against the live system, sequentially.
 pub fn collect_all() -> Inventory {
-    let mut components = Vec::new();
-    components.extend(system::collect());
-    components.extend(processor::collect());
-    components.extend(memory::collect());
-    components.extend(graphics::collect());
-    components.extend(storage::collect());
-    components.extend(network::collect());
-    components.extend(displays::collect());
-    components.extend(peripherals::collect());
-    components.extend(power::collect());
-    components.extend(sensors::collect());
-    Inventory { components }
+    Inventory { components: COLLECTORS.iter().flat_map(|(_, f)| f()).collect() }
 }
