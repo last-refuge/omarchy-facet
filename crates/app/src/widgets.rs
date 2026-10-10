@@ -10,6 +10,9 @@ use gpui::{Div, Hsla, IntoElement, ParentElement, Styled, Svg, div, px, svg};
 
 use crate::theme::{MONO_FONT, Theme};
 
+/// The version this binary was built as. The same number `facet --version` prints.
+pub const VERSION: &str = env!("CARGO_PKG_VERSION");
+
 pub fn icon(name: &str, size: f32, color: Hsla) -> Svg {
     svg().path(format!("icons/{name}.svg")).size(px(size)).flex_none().text_color(color)
 }

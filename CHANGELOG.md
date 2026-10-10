@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- The app shows its version: "Facet 1.0.x" at the bottom of the sidebar ("v1.0.x" in the narrow rail) and an About section in Preferences. It is the same number `facet --version` prints.
+
 - Installer: fixed `curl | bash` stopping after the package install (pacman's prompt read the rest of the script from the pipe). The whole script is now parsed before it runs, and no command inherits the pipe as stdin. `scripts/installer-test.sh` guards it.
 
 ## 1.0.1

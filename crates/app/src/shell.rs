@@ -8,7 +8,7 @@ use gpui::{
 
 use crate::app::{Facet, Load, Page};
 use crate::theme::{ThemeExt, UI_FONT};
-use crate::widgets::{Activate, category_icon, icon, pluralize};
+use crate::widgets::{Activate, VERSION, category_icon, icon, pluralize};
 
 pub const NARROW_BELOW: f32 = 880.0;
 
@@ -201,6 +201,19 @@ impl Facet {
         nav = nav
             .child(self.nav_item("nav-connections", "git-fork", "Device connections", None, self.page == Page::Connections, narrow, Page::Connections, cx))
             .child(self.nav_item("nav-preferences", "sliders-horizontal", "Preferences", None, self.page == Page::Preferences, narrow, Page::Preferences, cx));
+        // The running version, always visible: the quickest way to tell an update took.
+        nav = nav.child(
+            div()
+                .id("app-version")
+                .role(Role::GenericContainer)
+                .aria_label(format!("Facet version {VERSION}"))
+                .mt(px(6.))
+                .px(px(if narrow { 0. } else { 12. }))
+                .text_size(px(if narrow { 10. } else { 11.5 }))
+                .text_color(t.colors.nav_muted)
+                .when(narrow, |d| d.text_center())
+                .child(if narrow { format!("v{VERSION}") } else { format!("Facet {VERSION}") }),
+        );
         nav
     }
 

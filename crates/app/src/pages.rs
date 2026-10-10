@@ -9,7 +9,7 @@ use gpui::{
 
 use crate::app::{Facet, Load, Page, ThemePref};
 use crate::theme::{MONO_FONT, Mode, ThemeExt};
-use crate::widgets::{Activate, absence_reason, category_icon, component_icon, eyebrow, icon, line_chart, mono, pluralize, sparkline};
+use crate::widgets::{Activate, absence_reason, category_icon, component_icon, eyebrow, icon, line_chart, mono, pluralize, sparkline, VERSION};
 
 /// Short human phrase for a summary spec, or `None` when it adds nothing ("No").
 /// Widest the page content grows. The overview's two-column maths uses the same number.
@@ -1137,6 +1137,21 @@ impl Facet {
             )
             .child(self.section("Privacy", cx))
             .child(div().py(px(10.)).text_color(t.colors.muted).max_w(px(640.)).child("Facet reads hardware information on this computer and sends nothing anywhere. Serial numbers, UUIDs and MAC addresses are hidden by default, including in exported reports, until you choose to include them."))
+            .child(self.section("About", cx))
+            .child(
+                div()
+                    .id("about")
+                    .role(Role::GenericContainer)
+                    .aria_label(format!("About Facet, version {VERSION}"))
+                    .py(px(10.))
+                    .flex()
+                    .flex_col()
+                    .gap(px(6.))
+                    .child(div().flex().gap(px(16.)).child(div().w(px(140.)).text_color(t.colors.muted).child("Version")).child(mono(VERSION.to_owned())))
+                    .child(div().flex().gap(px(16.)).child(div().w(px(140.)).text_color(t.colors.muted).child("What it does")).child("Reads hardware information. It never changes your hardware."))
+                    .child(div().flex().gap(px(16.)).child(div().w(px(140.)).text_color(t.colors.muted).child("Licence")).child("MIT or Apache-2.0"))
+                    .child(div().flex().gap(px(16.)).child(div().w(px(140.)).text_color(t.colors.muted).child("Project")).child(mono("github.com/last-refuge/omarchy-facet".to_owned()))),
+            )
             .into_any_element()
     }
 }
