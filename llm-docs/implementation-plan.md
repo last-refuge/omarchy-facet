@@ -2,6 +2,12 @@
 
 This is the proposed implementation plan, updated to reflect distribution independence and the rejection of Omarchy theme integration. No implementation has started.
 
+## Status (2026-10-10)
+
+Milestones 1–6 are implemented; measured results, gates and what remains unverified are in
+[quality-report.md](quality-report.md). Decisions made along the way are in [decisions.md](decisions.md),
+the build log is [progress.md](progress.md), and the execution spec for v1.0.0 is [v1-plan.md](v1-plan.md).
+
 ## Foundation
 
 Use Rust with GPUI (user decision; see [decisions.md](decisions.md)), pinned to a Zed git revision, subject to a prototype proving accessibility, rendering, and performance. GTK4 was the earlier recommendation and is superseded. Target Wayland and X11. Use standard Linux interfaces and runtime capability detection, without dependencies on Omarchy commands or configuration.
