@@ -41,8 +41,10 @@ open it. On Omarchy, press <kbd>Super</kbd>+<kbd>Space</kbd> and type "Facet". I
 checksum-verified package when a release exists and otherwise builds from source in a few minutes. It asks
 for your password only for the final `pacman -U`.
 
-Prefer to read it first? `install.sh` is short. Run it with `--help`, or `--dry-run` to see the plan without
-changing anything.
+Prefer to read it first? `install.sh` is short. Options: `--dry-run` shows the plan and changes nothing,
+`--source` forces a source build, `--prefix DIR` installs without administrator access, `--bar` / `--no-bar`
+adds or skips the Omarchy bar widget (by default Omarchy users are asked), `--uninstall` removes it, and
+`--yes` skips confirmations (it never edits your shell config on its own).
 
 **Any other Linux.** The same command builds from source into `~/.local` and needs no administrator
 access. It tells you exactly which development packages to install if any are missing. Or by hand:
@@ -72,6 +74,7 @@ make install PREFIX=~/.local
 facet                         # readable report
 facet --json                  # versioned JSON (see docs/report-schema.md)
 facet --include-identifiers   # include serials, UUIDs and MAC addresses
+facet --status                # a few live readings as JSON (about 35 ms; used by the bar widget)
 facet --diagnose              # what Facet can and cannot read here; collector timings
 ```
 
@@ -105,10 +108,12 @@ crates/core        hardware records, availability states, units, report schema
 crates/collectors  Linux collectors (sysfs, procfs, D-Bus properties, uevents); pure and fixture-tested
 crates/cli         the `facet` command
 crates/app         the GPUI application
+omarchy-plugin/    the Omarchy bar widget (manifest.json + Widget.qml)
+install.sh         the one-command installer; packaging/ has the PKGBUILD and desktop entry
 ```
 
 Run the tests with `cargo test --workspace` and `cargo clippy --workspace --all-targets -- -D warnings`.
-`scripts/` has the accessibility audit, keyboard-flow test and cross-check against `lscpu`, `free`,
+`scripts/` has the accessibility audit, keyboard-flow test, plugin contract test (`plugin-test.sh`) and cross-check against `lscpu`, `free`,
 `lsblk`, `lspci`, `lsusb`, `sensors` and `upower`.
 
 ## Status and limits
