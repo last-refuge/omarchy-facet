@@ -4,11 +4,11 @@
 set -u
 out=$1; shift
 cd "$(dirname "$0")/.."
-if ps -eo stat,comm | awk '$1 ~ /D/ && $2 !~ /kworker/ {f=1} END {exit !f}'; then
+if ps -eo pid,ppid,stat,comm | awk '$3 ~ /D/ && $2 != 2 && $1 != 2 {f=1} END {exit !f}'; then
   echo "stuck D-state processes present; refusing to launch a GUI" >&2; exit 3
 fi
-timeout -s KILL 30 ./target/release/facet-app "$@" >/dev/null 2>&1 &
-sleep "${WAIT:-3}"
+XDG_STATE_HOME="${SHOT_STATE:-/tmp/facet-shot-state}" timeout -s KILL 30 ./target/release/facet-app "$@" >/dev/null 2>&1 &
+sleep "${WAIT:-2.5}"
 pid=$(pgrep -n -x facet-app)
 geo=$(hyprctl clients -j | python3 -c 'import json,sys
 for c in json.load(sys.stdin):

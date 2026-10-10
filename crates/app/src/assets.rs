@@ -15,10 +15,10 @@ macro_rules! icons {
 }
 
 icons!(
-    "activity", "battery-full", "cable", "camera", "check", "chevron-down", "chevron-left", "chevron-right", "circle-help",
+    "activity", "battery-full", "bluetooth", "cable", "camera", "check", "chevron-down", "chevron-left", "chevron-right", "circle-help",
     "circuit-board", "clock", "copy", "cpu", "download", "fan", "file-text", "gauge", "git-fork", "hard-drive",
     "info", "keyboard", "laptop", "layout-dashboard", "lock", "memory-stick", "microchip", "monitor", "mouse",
-    "network", "panel-left", "plug", "refresh-cw", "search", "sliders-horizontal", "triangle-alert", "usb",
+    "network", "panel-left", "plug", "refresh-cw", "search", "sliders-horizontal", "thermometer", "triangle-alert", "usb",
     "volume-2", "wifi", "x",
 );
 

@@ -20,7 +20,7 @@ fn locked(label: &str) -> Spec {
 fn sleeping(label: &str) -> Spec {
     Spec::new(label, Field::not_reported("dGPU runtime-suspended; not queried to avoid waking it")).live()
 }
-const GB: u64 = 1_000_000_000;
+const GIB: u64 = 1 << 30;
 
 fn system(vendor: &str, model: &str, chassis: &str, bios: &str, vm: bool) -> Component {
     Component::new("system:machine", Category::System, &format!("{vendor} {model}"))
@@ -40,16 +40,16 @@ fn cpu(name: &str, cores: u64, threads: u64, max_ghz: u64, l3: u64) -> Component
             v("Minimum", Value::Hertz(800_000_000)).rated(),
             v("Maximum", Value::Hertz(max_ghz * 100_000_000)).rated(),
         ]))
-        .group(SpecGroup::new("Cache", vec![v("L1 data", Value::Bytes(48 * 1024 * cores)), v("L2", Value::Bytes(2 * 1024 * 1024 * cores / 2)), v("L3", Value::Bytes(l3 * 1024 * 1024))]))
+        .group(SpecGroup::new("Cache", vec![v("L1 data", Value::BinaryBytes(48 * 1024 * cores)), v("L2", Value::BinaryBytes(2 * 1024 * 1024 * cores / 2)), v("L3", Value::BinaryBytes(l3 * 1024 * 1024))]))
         .group(SpecGroup::new("Instruction sets", vec![t("Notable", "AVX2, AES-NI, SSE4.2, VT-x, SHA")]).technical())
         .group(SpecGroup::new("Security mitigations", vec![t("Spectre v2", "Enhanced IBRS"), t("Meltdown", "Not affected")]).technical())
 }
 
 fn memory(total_gb: u64, free_pct: f64) -> Component {
-    Component::new("memory:system", Category::Memory, &format!("{total_gb} GB system memory"))
+    Component::new("memory:system", Category::Memory, &format!("{total_gb} GiB system memory"))
         .subtitle("DDR5")
-        .summary(vec![v("Installed", Value::Bytes(total_gb * GB)), v("In use", Value::Percent(100.0 - free_pct)).live(), v("Type", Value::Text("DDR5".into()))])
-        .group(SpecGroup::new("Capacity", vec![v("Available", Value::Bytes(total_gb * GB * (free_pct as u64) / 100)).live(), v("Swap", Value::Bytes(64 * GB / 8))]))
+        .summary(vec![v("Installed", Value::BinaryBytes(total_gb * GIB)), v("In use", Value::Percent(100.0 - free_pct)).live(), v("Type", Value::Text("DDR5".into()))])
+        .group(SpecGroup::new("Capacity", vec![v("Available", Value::BinaryBytes(total_gb * GIB * (free_pct as u64) / 100)).live(), v("Swap", Value::BinaryBytes(8 * GIB))]))
         .group(SpecGroup::new("Modules", vec![locked("Module detail")]).technical())
 }
 
@@ -57,7 +57,7 @@ fn dimm(n: u32, gb: u64, speed: u64) -> Component {
     Component::new(&format!("memory:dimm{n}"), Category::Memory, &format!("{gb} GB DDR5-{speed}"))
         .subtitle(&format!("Slot {n}"))
         .parent("memory:system")
-        .summary(vec![v("Size", Value::Bytes(gb * GB)), t("Speed", &format!("{speed} MT/s")), t("Manufacturer", "Micron")])
+        .summary(vec![v("Size", Value::BinaryBytes(gb * GIB)), t("Speed", &format!("{speed} MT/s")), t("Manufacturer", "Micron")])
         .group(SpecGroup::new("Identity", vec![t("Part number", "CT16G56C46S5.M8G1"), t("Serial number", "0xA1B2C3D4").identifier()]))
 }
 
@@ -76,7 +76,7 @@ fn gpu(id: &str, name: &str, discrete: bool, asleep: bool, driver: &str) -> Comp
 
 fn nvme(name: &str, model: &str, tb: f64, hours: u64, temp: f64) -> Component {
     Component::new(&format!("storage:{name}"), Category::Storage, model)
-        .subtitle(&format!("{tb:.1} TB · NVMe solid-state drive"))
+        .subtitle(&format!("{} · NVMe solid-state drive", crate::format_bytes((tb * 1e12) as u64)))
         .summary(vec![v("Capacity", Value::Bytes((tb * 1e12) as u64)), t("Type", "NVMe solid-state drive"), t("Interface", "NVMe")])
         .group(SpecGroup::new("Health", vec![
             t("Critical warnings", "None reported"),
@@ -91,7 +91,7 @@ fn nvme(name: &str, model: &str, tb: f64, hours: u64, temp: f64) -> Component {
 fn sata(name: &str, model: &str, tb: f64, hdd: bool) -> Component {
     let kind = if hdd { "Hard disk drive" } else { "Solid-state drive" };
     Component::new(&format!("storage:{name}"), Category::Storage, model)
-        .subtitle(&format!("{tb:.1} TB · {kind}"))
+        .subtitle(&format!("{} · {kind}", crate::format_bytes((tb * 1e12) as u64)))
         .summary(vec![v("Capacity", Value::Bytes((tb * 1e12) as u64)), t("Type", kind), t("Interface", "SATA")])
         .group(SpecGroup::new("Health", vec![missing("SMART status")]))
         .group(SpecGroup::new("Identity", vec![t("Model", model), t("Serial number", "WD-WCC4E1234567").identifier()]))

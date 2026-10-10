@@ -38,6 +38,7 @@ pub fn collect_from(root: &Path) -> Vec<Component> {
     v.extend(devices::input(root, usb_db.as_ref()));
     v.extend(devices::audio(root));
     v.extend(devices::cameras(root));
+    curate(&mut v);
     // A parent that is not itself a listed component (a bridge, a display function) is dropped.
     let ids: HashSet<String> = v.iter().map(|c| c.id.clone()).collect();
     for c in &mut v {
@@ -46,6 +47,22 @@ pub fn collect_from(root: &Path) -> Vec<Component> {
         }
     }
     v
+}
+
+/// Drop input nodes that are noise to a person browsing hardware: platform buttons and lid
+/// switches, ALSA jack-sense nodes (the audio card already represents them), the PC speaker, and
+/// input nodes that merely duplicate the USB device they belong to.
+fn curate(v: &mut Vec<Component>) {
+    v.retain(|c| {
+        if !c.id.starts_with("input:") {
+            return true;
+        }
+        let kind = c.subtitle.as_deref().unwrap_or("");
+        if matches!(kind, "Platform" | "Audio jack" | "Audio output (HDMI/DP)") || c.title == "PC Speaker" {
+            return false;
+        }
+        !c.parent.as_deref().is_some_and(|p| p.starts_with("usb:"))
+    });
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -265,10 +282,11 @@ mod tests {
         let ids: Vec<&str> = per.iter().map(|c| c.id.as_str()).collect();
         // Display function and bridges never appear; the dGPU's audio function does (non-display) but unread.
         assert!(!ids.contains(&"pci:0000:01:00.0"), "{ids:?}");
-        for id in ["pci:0000:01:00.1", "pci:0000:00:14.0", "usb:usb1", "usb:1-11", "usb:1-14", "bluetooth:hci0", "camera:video0", "audio:card0", "audio:card1", "input:event5"] {
+        for id in ["pci:0000:01:00.1", "pci:0000:00:14.0", "usb:usb1", "usb:1-11", "usb:1-14", "bluetooth:hci0", "camera:video0", "audio:card0", "audio:card1"] {
             assert!(ids.contains(&id), "missing {id} in {ids:?}");
         }
         assert!(!ids.contains(&"camera:video1"));
+        assert!(!ids.contains(&"input:event5"), "input nodes under a USB device are folded into it: {ids:?}");
         let get = |id: &str| per.iter().find(|c| c.id == id).unwrap();
         assert_eq!(get("usb:usb1").parent.as_deref(), Some("pci:0000:00:14.0"));
         assert_eq!(get("usb:1-14").parent.as_deref(), Some("usb:usb1"));
@@ -343,5 +361,25 @@ mod tests {
         let v = collect_from(fx.path());
         assert_eq!(v.len(), 1);
         assert_eq!(v[0].parent, None);
+    }
+
+    #[test]
+    fn curate_drops_noise_but_keeps_real_inputs() {
+        let mk = |id: &str, title: &str, kind: &str, parent: Option<&str>| {
+            let mut c = Component::new(id, facet_core::Category::Peripherals, title).subtitle(kind);
+            c.parent = parent.map(str::to_owned);
+            c
+        };
+        let mut v = vec![
+            mk("input:event0", "Power Button", "Platform", None),
+            mk("input:event1", "HDA Intel PCH Mic", "Audio jack", None),
+            mk("input:event2", "PC Speaker", "Input device", None),
+            mk("input:event3", "ITE Keyboard", "Keyboard", Some("usb:1-6")),
+            mk("input:event4", "AT keyboard", "Keyboard", None),
+            mk("usb:1-6", "ITE Device", "USB", None),
+        ];
+        curate(&mut v);
+        let ids: Vec<&str> = v.iter().map(|c| c.id.as_str()).collect();
+        assert_eq!(ids, ["input:event4", "usb:1-6"]);
     }
 }

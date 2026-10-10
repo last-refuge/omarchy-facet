@@ -19,7 +19,9 @@ pub mod util;
 use facet_core::{Component, Inventory};
 
 /// Every collector, fastest first. The UI runs each independently so slow ones fill in later.
-pub const COLLECTORS: &[(&str, fn() -> Vec<Component>)] = &[
+pub type CollectFn = fn() -> Vec<Component>;
+
+pub const COLLECTORS: &[(&str, CollectFn)] = &[
     ("system", system::collect),
     ("processor", processor::collect),
     ("memory", memory::collect),

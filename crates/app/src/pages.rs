@@ -1,18 +1,46 @@
 //! Page bodies: overview, category lists, component detail, connections, preferences, and the
 //! loading / error states.
 
-use facet_core::{Availability, Category, Component, Spec, Value};
+use facet_core::{Category, Component, Spec, Value};
 use gpui::{
-    AnyElement, ClickEvent, Context, Div, FontStyle, FontWeight, InteractiveElement, IntoElement, ParentElement, Role,
+    AnyElement, ClickEvent, Context, Div, FontWeight, InteractiveElement, IntoElement, ParentElement, Role,
     SharedString, StatefulInteractiveElement, Styled, Window, div, prelude::*, px, transparent_black,
 };
 
 use crate::app::{Facet, Load, Page, ThemePref};
 use crate::theme::{MONO_FONT, Mode, ThemeExt};
-use crate::widgets::{absence_reason, category_icon, component_icon, eyebrow, icon, is_absent, mono, pluralize};
+use crate::widgets::{absence_reason, category_icon, component_icon, eyebrow, icon, mono, pluralize};
+
+/// Short human phrase for a summary spec, or `None` when it adds nothing ("No").
+fn fact(s: &Spec, first: bool) -> Option<String> {
+    let text = s.display();
+    // Drop explanatory parentheses ("Integrated (on the root bus; heuristic)" -> "Integrated").
+    let short = text.split(" (").next().unwrap_or(&text).to_owned();
+    match s.value.value() {
+        Some(Value::Bool(true)) => Some(s.label.to_lowercase()),
+        Some(Value::Bool(false)) => None,
+        Some(Value::Count(_) | Value::Percent(_)) => Some(format!("{short} {}", s.label.to_lowercase())),
+        Some(Value::Hertz(_)) if s.rated && s.label.starts_with("Max") => Some(format!("up to {short}")),
+        Some(Value::Bytes(_) | Value::BinaryBytes(_)) if !first => {
+            let label = s.label.to_lowercase();
+            let label = label.trim_end_matches(" memory").trim_end_matches(" total");
+            Some(format!("{short} {label}"))
+        }
+        _ => Some(short),
+    }
+}
 
 fn facts(c: &Component, n: usize) -> String {
-    c.summary.iter().filter(|s| s.is_available()).take(n).map(Spec::display).collect::<Vec<_>>().join("  ·  ")
+    let mut out = Vec::new();
+    for (i, s) in c.summary.iter().filter(|s| s.is_available() && !s.identifier).enumerate() {
+        if let Some(f) = fact(s, i == 0) {
+            out.push(f);
+        }
+        if out.len() == n {
+            break;
+        }
+    }
+    out.join("  ·  ")
 }
 
 impl Facet {
@@ -166,6 +194,7 @@ impl Facet {
 
     fn machine_row(&self, label: &str, c: &Component, cx: &mut Context<Self>) -> AnyElement {
         let t = cx.theme().clone();
+        let narrow = self.narrow;
         let id = c.id.clone();
         let is_new = self.new_ids.contains(&c.id);
         div()
@@ -187,9 +216,24 @@ impl Facet {
             .relative()
             .when(is_new, |d| d.child(div().absolute().left_0().top(px(8.)).bottom(px(8.)).w(px(3.)).rounded(px(2.)).bg(t.colors.accent)))
             .child(icon(component_icon(c), 19., t.colors.muted))
-            .child(div().w(px(104.)).flex_none().child(eyebrow(label.to_owned(), &t)))
-            .child(div().flex_1().min_w_0().truncate().text_size(px(16.)).font_weight(FontWeight::SEMIBOLD).child(c.title.clone()))
-            .child(div().flex_none().text_size(px(13.)).text_color(t.colors.muted).child(facts(c, 3)))
+            .when(!narrow, |d| {
+                d.child(div().w(px(104.)).flex_none().child(eyebrow(label.to_owned(), &t)))
+                    .child(div().flex_1().min_w_0().truncate().text_size(px(16.)).font_weight(FontWeight::SEMIBOLD).child(c.title.clone()))
+                    .child(div().flex_none().text_size(px(13.)).text_color(t.colors.muted).child(facts(c, 3)))
+            })
+            .when(narrow, |d| {
+                d.child(
+                    div()
+                        .flex_1()
+                        .min_w_0()
+                        .flex()
+                        .flex_col()
+                        .gap(px(2.))
+                        .child(eyebrow(label.to_owned(), &t))
+                        .child(div().text_size(px(16.)).font_weight(FontWeight::SEMIBOLD).child(c.title.clone()))
+                        .child(div().text_size(px(12.5)).text_color(t.colors.muted).child(facts(c, 3))),
+                )
+            })
             .child(icon("chevron-right", 15., t.colors.faint))
             .into_any_element()
     }
@@ -311,9 +355,10 @@ impl Facet {
                     .flex()
                     .flex_col()
                     .child(div().truncate().font_weight(FontWeight::SEMIBOLD).child(c.title.clone()))
-                    .when_some(c.subtitle.clone(), |d, s| d.child(div().truncate().text_size(px(12.5)).text_color(t.colors.muted).child(s))),
+                    .when_some(c.subtitle.clone(), |d, s| d.child(div().truncate().text_size(px(12.5)).text_color(t.colors.muted).child(s)))
+                    .when(self.narrow, |d| d.child(div().text_size(px(12.5)).text_color(t.colors.muted).child(facts(c, 2)))),
             )
-            .child(div().flex_none().text_size(px(12.5)).text_color(t.colors.muted).child(facts(c, 2)))
+            .when(!self.narrow, |d| d.child(div().flex_none().text_size(px(12.5)).text_color(t.colors.muted).child(facts(c, 2))))
             .when(is_new, |d| d.child(div().text_size(px(11.)).font_weight(FontWeight::SEMIBOLD).text_color(t.colors.accent_text).child("NEW")))
             .child(icon("chevron-right", 14., t.colors.faint))
             .into_any_element()
@@ -354,27 +399,39 @@ impl Facet {
                 })
                 .into_any_element();
         }
-        // Rows in tree order within this category; items whose parent lives elsewhere become roots.
-        let ids: std::collections::HashSet<&str> = items.iter().map(|c| c.id.as_str()).collect();
-        let mut ordered = Vec::new();
-        let roots: Vec<Component> = items.iter().filter(|c| c.parent.as_deref().is_none_or(|p| !ids.contains(p))).cloned().collect();
-        for r in &roots {
-            ordered.push((r.clone(), 0));
-            self.tree_rows(&items, Some(&r.id), 1, &mut ordered);
+        // Peripherals: real devices first, internal PCI controllers in their own quieter section.
+        // Each group is a forest of its own, so a USB tree isn't swallowed by its PCI controller.
+        let (controllers, devices): (Vec<Component>, Vec<Component>) =
+            if cat == Category::Peripherals { items.into_iter().partition(|c| c.id.starts_with("pci:")) } else { (Vec::new(), items) };
+        let mut page = page;
+        for (title, group) in [(None, devices), (Some("Internal controllers"), controllers)] {
+            if group.is_empty() {
+                continue;
+            }
+            let ids: std::collections::HashSet<&str> = group.iter().map(|c| c.id.as_str()).collect();
+            let roots: Vec<Component> = group.iter().filter(|c| c.parent.as_deref().is_none_or(|p| !ids.contains(p))).cloned().collect();
+            let mut ordered = Vec::new();
+            for r in &roots {
+                ordered.push((r.clone(), 0));
+                self.tree_rows(&group, Some(&r.id), 1, &mut ordered);
+            }
+            if let Some(title) = title {
+                page = page.child(self.section(title, cx));
+            }
+            let mut list = div().flex().flex_col().border_t_1().border_color(t.colors.hairline_strong);
+            for (c, depth) in ordered {
+                list = list.child(self.component_row(&c, depth, cx));
+            }
+            page = page.child(list);
         }
-        let mut list = div().flex().flex_col().border_t_1().border_color(t.colors.hairline_strong);
-        for (c, depth) in ordered {
-            list = list.child(self.component_row(&c, depth, cx));
-        }
-        page.child(list).into_any_element()
+        page.into_any_element()
     }
 
     // ---- detail ---------------------------------------------------------------------------
 
     fn spec_row(&self, owner: &str, s: &Spec, cx: &mut Context<Self>) -> AnyElement {
         let t = cx.theme().clone();
-        let absent = is_absent(s);
-        let text = s.display();
+        let (text, absent) = self.spec_text(s);
         let copy = text.clone();
         let name = format!("{}: {}", s.label, text);
         let gid = SharedString::from(format!("grp-{owner}-{}", s.label));
@@ -460,7 +517,16 @@ impl Facet {
                         .child(div().id("detail-title").role(Role::Heading).aria_label(c.title.clone()).text_size(px(if narrow { 26. } else { 32. })).line_height(px(38.)).font_weight(FontWeight::SEMIBOLD).child(c.title.clone()))
                         .when_some(c.subtitle.clone(), |d, s| d.child(div().text_size(px(15.)).text_color(t.colors.muted).child(s))),
                 )
-                .child(self.button("toggle-sources", if self.show_sources { "Hide sources" } else { "Show sources" }, false, cx, |this, window, cx| this.toggle_sources(&crate::app::ToggleSources, window, cx))),
+                .child(
+                    div()
+                        .flex_none()
+                        .flex()
+                        .gap(px(8.))
+                        .when(c.all_specs().any(|s| s.identifier), |d| {
+                            d.child(self.button("toggle-identifiers", if self.show_identifiers { "Hide identifiers" } else { "Show identifiers" }, false, cx, |this, window, cx| this.toggle_identifiers(&crate::app::ToggleIdentifiers, window, cx)))
+                        })
+                        .child(self.button("toggle-sources", if self.show_sources { "Hide sources" } else { "Show sources" }, false, cx, |this, window, cx| this.toggle_sources(&crate::app::ToggleSources, window, cx))),
+                ),
         );
         if let Some(n) = self.notice(cx) {
             page = page.child(n);
@@ -470,8 +536,7 @@ impl Facet {
         if !c.summary.is_empty() {
             let mut strip = div().flex().flex_wrap().gap_x(px(if narrow { 24. } else { 48. })).gap_y(px(14.)).pb(px(8.));
             for s in &c.summary {
-                let absent = is_absent(s);
-                let text = s.display();
+                let (text, absent) = self.spec_text(s);
                 let copy = text.clone();
                 strip = strip.child(
                     div()
@@ -618,7 +683,7 @@ impl Facet {
         }
         let dark = t.mode == Mode::Dark;
         let shortcut = |keys: &str, what: &str| {
-            div().flex().gap(px(16.)).py(px(8.)).border_b_1().border_color(t.colors.hairline).child(div().w(px(140.)).child(mono(keys.to_owned()))).child(div().text_color(t.colors.muted).child(what.to_owned()))
+            div().flex().items_center().gap(px(16.)).py(px(8.)).border_b_1().border_color(t.colors.hairline).child(div().w(px(140.)).child(mono(keys.to_owned()))).child(div().text_color(t.colors.muted).child(what.to_owned()))
         };
         div()
             .flex()
@@ -636,6 +701,7 @@ impl Facet {
                     .child(shortcut("Ctrl R", "Re-read the hardware"))
                     .child(shortcut("Alt ←", "Go back"))
                     .child(shortcut("Ctrl Shift S", "Show or hide data sources"))
+                    .child(shortcut("Ctrl Shift I", "Show or hide serial numbers and addresses"))
                     .child(shortcut("Ctrl Shift L", "Toggle light and dark"))
                     .child(shortcut("Tab", "Move between controls")),
             )
@@ -660,14 +726,29 @@ fn live_readings(inv: &facet_core::Inventory) -> Vec<(String, String, String)> {
     }
     if let Some((_, s)) = find(&|c, s| c.id == "memory:system" && s.label == "In use") {
         out.push(("Memory in use".to_owned(), s.display(), "Of installed memory".to_owned()));
+    } else if let Some(mem) = inv.get("memory:system") {
+        let bytes = |label: &str| mem.all_specs().find(|s| s.label == label).and_then(|s| match s.value.value() {
+            Some(Value::BinaryBytes(b) | Value::Bytes(b)) => Some(*b),
+            _ => None,
+        });
+        if let (Some(total), Some(avail)) = (bytes("Usable memory"), bytes("Available memory"))
+            && total > 0
+            && avail <= total
+        {
+            let pct = 100.0 * (total - avail) as f64 / total as f64;
+            out.push(("Memory in use".to_owned(), Value::Percent(pct).display(), "Of usable memory".to_owned()));
+        }
     }
-    if let Some(g) = inv.in_category(Category::Graphics).find(|c| c.all_specs().any(|s| s.label == "Temperature")) {
-        let s = g.all_specs().find(|s| s.label == "Temperature").unwrap();
-        let (value, note) = match &s.value.availability {
-            Availability::Available { .. } => (s.display(), g.title.clone()),
-            _ => ("— °C".to_owned(), format!("{} is asleep; not queried so it stays asleep", g.title)),
-        };
-        out.push(("GPU temperature".to_owned(), value, note));
+    let gpus: Vec<(&Component, &Spec)> = inv
+        .in_category(Category::Graphics)
+        .filter_map(|g| g.all_specs().find(|s| s.label == "Temperature").map(|s| (g, s)))
+        .collect();
+    if let Some((g, s)) = gpus.iter().find(|(_, s)| s.is_available()) {
+        out.push(("GPU temperature".to_owned(), s.display(), g.title.clone()));
+    } else if let Some((g, s)) = gpus.iter().find(|(_, s)| s.value.source.contains("suspended")).or(gpus.first()) {
+        let asleep = s.value.source.contains("suspended");
+        let note = if asleep { format!("{} is asleep; not queried so it stays asleep", g.title) } else { format!("{}: the driver doesn't report it", g.title) };
+        out.push(("GPU temperature".to_owned(), "— °C".to_owned(), note));
     }
     out
 }

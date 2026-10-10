@@ -20,7 +20,7 @@ When a decision is the user's to make, pick the recommended default and record i
 ## Safety rules for this machine
 
 - Launch any GUI or GPU-touching binary with `timeout -s KILL <n>`.
-- Before each launch run `ps -eo stat,comm | awk '$1 ~ /D/ && $2 !~ /kworker/'`. If stuck D-state processes exist, do non-GPU work only and log it.
+- Before each launch run `ps -eo pid,ppid,stat,comm | awk '$3 ~ /D/ && $2 != 2 && $1 != 2'` (user-space processes only; kernel threads such as `irq/*` and `kworker` blip into D state harmlessly). If stuck D-state processes exist, do non-GPU work only and log it.
 - Never run privileged commands, change system or security settings, install packages, or write outside the project and the session scratchpad.
 - Build the Arch package with makepkg in the scratchpad only. Never install it.
 - No pushing, publishing or sending anything outward. Local git only. Commit at the end of every coherent step. Tag `v1.0.0` locally only when every gate below is met.

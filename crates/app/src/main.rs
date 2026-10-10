@@ -14,17 +14,19 @@ use app::{Facet, Page, Source, ThemePref};
 
 static START: std::sync::OnceLock<std::time::Instant> = std::sync::OnceLock::new();
 
-const USAGE: &str = "usage: facet-app [--fixture laptop|desktop|vm|loading|error] [--page <overview|category:storage|component:<id>|connections|preferences>] [--theme system|light|dark] [--size WxH]";
+const USAGE: &str = "usage: facet-app [--fixture laptop|desktop|vm|loading|error] [--page <overview|category:storage|component:<id>|connections|preferences>] [--theme system|light|dark] [--size WxH] [--overlay search|export] [--query <text>]";
 
 struct Args {
     source: Source,
     page: Option<Page>,
     theme: Option<ThemePref>,
     size: Option<(f32, f32)>,
+    overlay: Option<String>,
+    query: Option<String>,
 }
 
 fn parse_args() -> Result<Args, String> {
-    let mut args = Args { source: Source::Live, page: None, theme: None, size: None };
+    let mut args = Args { source: Source::Live, page: None, theme: None, size: None, overlay: None, query: None };
     let mut it = std::env::args().skip(1);
     while let Some(a) = it.next() {
         let mut value = |name: &str| it.next().ok_or_else(|| format!("{name} needs a value"));
@@ -54,6 +56,8 @@ fn parse_args() -> Result<Args, String> {
                 let (w, h) = v.split_once('x').ok_or("--size expects WxH")?;
                 args.size = Some((w.parse().map_err(|_| "bad width")?, h.parse().map_err(|_| "bad height")?));
             }
+            "--overlay" => args.overlay = Some(value("--overlay")?),
+            "--query" => args.query = Some(value("--query")?),
             "--help" | "-h" => return Err(String::new()),
             other => return Err(format!("unknown option {other:?}")),
         }
@@ -86,7 +90,7 @@ fn main() {
 
         let (w, h) = args.size.unwrap_or((1240., 800.));
         let bounds = Bounds::centered(None, size(px(w), px(h)), cx);
-        let Args { source, page, theme, .. } = args;
+        let Args { source, page, theme, overlay, query, .. } = args;
         cx.open_window(
             WindowOptions {
                 window_bounds: Some(WindowBounds::Windowed(bounds)),
@@ -97,12 +101,15 @@ fn main() {
                 ..Default::default()
             },
             move |window, cx| {
-                if std::env::var_os("FACET_TIMING").is_some() {
-                    if let Some(t) = START.get() {
-                        eprintln!("window-created-ms {}", t.elapsed().as_millis());
-                    }
+                if let (Some(_), Some(t)) = (std::env::var_os("FACET_TIMING"), START.get()) {
+                    eprintln!("window-created-ms {}", t.elapsed().as_millis());
                 }
                 let view = cx.new(|cx| Facet::new(source, page, theme, window, cx));
+                view.update(cx, |this, cx| match overlay.as_deref() {
+                    Some("search") => this.open_search_with(query.as_deref().unwrap_or(""), window, cx),
+                    Some("export") => this.open_export(&app::OpenExport, window, cx),
+                    _ => {}
+                });
                 view
             },
         )

@@ -381,7 +381,8 @@ pub(super) fn cameras(root: &Path) -> Vec<Component> {
         }
         let parent = bus_parent(&comps);
         let name = read_attr(root, &format!("{base}/name"));
-        let title = name.value().cloned().unwrap_or_else(|| format!("Camera ({n})"));
+        // V4L2 names read "<Product>: <Stream>" and the stream part is truncated by the kernel.
+        let title = name.value().map(|n| n.split(": ").next().unwrap_or(n).to_owned()).unwrap_or_else(|| format!("Camera ({n})"));
         let driver = link_name(root, &format!("{base}/device/driver"));
         let conn = bus_label(parent.as_deref());
         let mut c = Component::new(&format!("camera:{n}"), Category::Peripherals, &title);

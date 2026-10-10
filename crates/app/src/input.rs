@@ -7,11 +7,10 @@ use std::ops::Range;
 
 use gpui::{
     App, Bounds, ClipboardItem, Context, CursorStyle, ElementId, ElementInputHandler, Entity,
-    EntityInputHandler, FocusHandle, Focusable, GlobalElementId, KeyBinding, Keystroke, LayoutId,
+    EntityInputHandler, FocusHandle, Focusable, GlobalElementId, KeyBinding, LayoutId,
     MouseButton, MouseDownEvent, MouseMoveEvent, MouseUpEvent, PaintQuad, Pixels, Point,
-    ShapedLine, SharedString, Style, TextRun, UTF16Selection, UnderlineStyle, Window, WindowBounds,
-    WindowOptions, actions, black, div, fill, hsla, opaque_grey, point, prelude::*, px, relative,
-    rgb, rgba, size, white, yellow,
+    ShapedLine, SharedString, Style, TextRun, UTF16Selection, UnderlineStyle, Window,
+    actions, div, fill, hsla, point, prelude::*, px, relative, size,
 };
 use unicode_segmentation::*;
 
@@ -70,10 +69,6 @@ impl TextInput {
         }
     }
 
-    pub fn text(&self) -> &str {
-        &self.content
-    }
-
     pub fn set_text(&mut self, text: &str, cx: &mut Context<Self>) {
         self.content = text.to_owned().into();
         let end = self.content.len();
@@ -81,6 +76,10 @@ impl TextInput {
         self.marked_range = None;
         cx.emit(Changed);
         cx.notify();
+    }
+
+    pub fn text(&self) -> &str {
+        &self.content
     }
 
     /// Register editing key bindings once at startup.
@@ -315,15 +314,6 @@ impl TextInput {
             .unwrap_or(self.content.len())
     }
 
-    fn reset(&mut self) {
-        self.content = "".into();
-        self.selected_range = 0..0;
-        self.selection_reversed = false;
-        self.marked_range = None;
-        self.last_layout = None;
-        self.last_bounds = None;
-        self.is_selecting = false;
-    }
 }
 
 impl EntityInputHandler for TextInput {

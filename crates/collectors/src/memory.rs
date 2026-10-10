@@ -56,7 +56,7 @@ fn mem_spec(label: &str, map: &Result<BTreeMap<String, Result<u64, String>>, Fie
     let field = match map {
         Err(f) => f.clone(),
         Ok(m) => match m.get(key) {
-            Some(Ok(b)) => Field::available(Value::Bytes(*b), MEMINFO_SRC),
+            Some(Ok(b)) => Field::available(Value::BinaryBytes(*b), MEMINFO_SRC),
             Some(Err(e)) => Field::failed(e.clone(), MEMINFO_SRC),
             None => Field::not_reported(MEMINFO_SRC),
         },
@@ -71,7 +71,7 @@ fn system_component(root: &Path, meminfo: Field<String>, dimms: &Result<Option<V
     let swap_total = mem_spec("Swap total", &m, "SwapTotal");
 
     let title = match total.value.value() {
-        Some(Value::Bytes(b)) => format!("{} memory", gib_label(*b)),
+        Some(Value::BinaryBytes(b)) => format!("{} memory", gib_label(*b)),
         _ => "System memory".to_owned(),
     };
 
@@ -106,7 +106,7 @@ fn system_component(root: &Path, meminfo: Field<String>, dimms: &Result<Option<V
     c
 }
 
-/// Binary (GiB) label for human titles. `Value::Bytes` itself formats in decimal units.
+/// Binary (GiB) label for human titles. `Value::Bytes` formats in decimal units.
 fn gib_label(bytes: u64) -> String {
     const GIB: f64 = 1024.0 * 1024.0 * 1024.0;
     const MIB: f64 = 1024.0 * 1024.0;
@@ -153,8 +153,8 @@ fn swap_groups(root: &Path) -> Vec<SpecGroup> {
         };
         let mut specs = vec![
             Spec::text("Kind", kind_label, SWAPS_SRC),
-            Spec::val("Size", Value::Bytes(size.saturating_mul(1024)), SWAPS_SRC),
-            Spec::val("Used", Value::Bytes(used.saturating_mul(1024)), SWAPS_SRC).live(),
+            Spec::val("Size", Value::BinaryBytes(size.saturating_mul(1024)), SWAPS_SRC),
+            Spec::val("Used", Value::BinaryBytes(used.saturating_mul(1024)), SWAPS_SRC).live(),
             match cols.get(4) {
                 Some(p) => Spec::text("Priority", *p, SWAPS_SRC),
                 None => Spec::missing("Priority", SWAPS_SRC),
@@ -176,11 +176,11 @@ fn zram_specs(root: &Path, name: &str) -> Vec<Spec> {
             .map(|t| Value::Text(t.trim_matches(|c| c == '[' || c == ']').to_owned()))
             .ok_or_else(|| format!("no active algorithm in {s:?}"))
     });
-    let disksize = parse_field(read_field(root, &format!("{dir}/disksize")), |s| s.parse::<u64>().map(Value::Bytes).map_err(|e| e.to_string()));
+    let disksize = parse_field(read_field(root, &format!("{dir}/disksize")), |s| s.parse::<u64>().map(Value::BinaryBytes).map_err(|e| e.to_string()));
     let mm_path = format!("{dir}/mm_stat");
     let mm = |idx: usize| {
         parse_field(read_field(root, &mm_path), |s| {
-            s.split_whitespace().nth(idx).ok_or_else(|| "mm_stat is shorter than expected".to_owned())?.parse::<u64>().map(Value::Bytes).map_err(|e| e.to_string())
+            s.split_whitespace().nth(idx).ok_or_else(|| "mm_stat is shorter than expected".to_owned())?.parse::<u64>().map(Value::BinaryBytes).map_err(|e| e.to_string())
         })
     };
     vec![
@@ -366,7 +366,7 @@ fn dimm_component(d: &Dimm) -> Component {
         None => Spec::missing(label, DMI_SRC),
     };
     let size = match d.size {
-        Some(b) => Spec::val("Capacity", Value::Bytes(b), DMI_SRC),
+        Some(b) => Spec::val("Capacity", Value::BinaryBytes(b), DMI_SRC),
         None => Spec::new("Capacity", Field::failed("size reported as unknown by firmware", DMI_SRC)),
     };
     let mut c = Component::new(&format!("memory:dimm{}", d.slot), Category::Memory, &title).parent(SYSTEM_ID).summary(vec![
@@ -452,24 +452,24 @@ mod tests {
         assert_eq!(c.id, "memory:system");
         assert_eq!(c.category, Category::Memory);
         assert_eq!(c.title, "31 GiB memory");
-        assert_eq!(spec(c, "Usable memory").value.value(), Some(&Value::Bytes(32567160 * 1024)));
+        assert_eq!(spec(c, "Usable memory").value.value(), Some(&Value::BinaryBytes(32567160 * 1024)));
         let avail = spec(c, "Available memory");
         assert!(avail.live);
-        assert_eq!(avail.value.value(), Some(&Value::Bytes(23046204 * 1024)));
+        assert_eq!(avail.value.value(), Some(&Value::BinaryBytes(23046204 * 1024)));
         assert_eq!(avail.value.source, "procfs:/proc/meminfo");
-        assert_eq!(spec(c, "Swap total").value.value(), Some(&Value::Bytes(65134200 * 1024)));
+        assert_eq!(spec(c, "Swap total").value.value(), Some(&Value::BinaryBytes(65134200 * 1024)));
         assert!(c.groups.iter().any(|g| g.title == "Swap: /swap/swapfile"));
         let z = c.groups.iter().find(|g| g.title == "Swap: /dev/zram0").unwrap();
         let get = |l: &str| z.specs.iter().find(|s| s.label == l).unwrap();
         assert_eq!(get("Kind").display(), "Compressed RAM (zram)");
         assert_eq!(get("Compression algorithm").display(), "zstd");
-        assert_eq!(get("Uncompressed capacity").value.value(), Some(&Value::Bytes(33347862528)));
-        assert_eq!(get("Data stored (compressed)").value.value(), Some(&Value::Bytes(11353664)));
+        assert_eq!(get("Uncompressed capacity").value.value(), Some(&Value::BinaryBytes(33347862528)));
+        assert_eq!(get("Data stored (compressed)").value.value(), Some(&Value::BinaryBytes(11353664)));
         assert!(get("Used").live);
         assert_eq!(get("Priority").display(), "100");
         let f = c.groups.iter().find(|g| g.title == "Swap: /swap/swapfile").unwrap();
         assert_eq!(f.specs[0].display(), "File");
-        assert_eq!(f.specs[1].value.value(), Some(&Value::Bytes(32567932 * 1024)));
+        assert_eq!(f.specs[1].value.value(), Some(&Value::BinaryBytes(32567932 * 1024)));
     }
 
     #[test]
@@ -510,14 +510,14 @@ mod tests {
         assert_eq!(d0.parent.as_deref(), Some("memory:system"));
         assert_eq!(d0.title, "M425R2GA3BB0-CWMOL");
         assert_eq!(d0.subtitle.as_deref(), Some("16 GiB · DDR5 · 5600 MT/s"));
-        assert_eq!(spec(d0, "Capacity").value.value(), Some(&Value::Bytes(16 << 30)));
+        assert_eq!(spec(d0, "Capacity").value.value(), Some(&Value::BinaryBytes(16 << 30)));
         assert_eq!(spec(d0, "Form factor").display(), "SO-DIMM");
         assert_eq!(spec(d0, "Manufacturer").display(), "Samsung");
         assert!(spec(d0, "Rated speed").rated);
         assert!(spec(d0, "Serial number").identifier);
         assert_eq!(spec(d0, "Slot").display(), "Controller0-ChannelA");
         let d2 = &v[2];
-        assert_eq!(spec(d2, "Capacity").value.value(), Some(&Value::Bytes(512 << 10)));
+        assert_eq!(spec(d2, "Capacity").value.value(), Some(&Value::BinaryBytes(512 << 10)));
         assert_eq!(spec(d2, "Manufacturer").display(), "Not reported");
         assert_eq!(spec(d2, "Serial number").display(), "Not reported");
         assert_eq!(spec(d2, "Type").display(), "DDR4");

@@ -176,7 +176,7 @@ fn cache_specs(root: &Path, first: u32, pkg_cpus: usize) -> Vec<Spec> {
             None => name,
         };
         let order = if kind == "Instruction" { 1 } else { 0 };
-        let spec = Spec::new(&label, parse_field(size, |s| parse_cache_size(s).map(Value::Bytes).ok_or_else(|| format!("unrecognised cache size {s:?}"))));
+        let spec = Spec::new(&label, parse_field(size, |s| parse_cache_size(s).map(Value::BinaryBytes).ok_or_else(|| format!("unrecognised cache size {s:?}"))));
         found.push((level, order, spec));
     }
     found.sort_by_key(|(l, o, _)| (*l, *o));
@@ -332,7 +332,7 @@ fn package_component(root: &Path, id: &str, procs: &[(u32, &Block)], sockets: us
                 "Cache size (as reported by CPU)",
                 parse_field(Field::available(s.clone(), PROC_SRC), |s| {
                     let kb = s.trim_end_matches("KB").trim().parse::<u64>().map_err(|_| format!("unrecognised cache size {s:?}"))?;
-                    Ok(Value::Bytes(kb * 1024))
+                    Ok(Value::BinaryBytes(kb * 1024))
                 }),
             ),
             None => Spec::missing("Cache", &source(&cpu_path(cpus[0], "cache"))),
@@ -467,9 +467,9 @@ mod tests {
         assert!(cur.live);
         assert_eq!(cur.display(), "1.20 GHz");
         assert_eq!(cur.value.source, "sysfs:/sys/devices/system/cpu/cpu16/cpufreq/scaling_cur_freq");
-        assert_eq!(spec(c, "L1 data cache (per 2 threads)").value.value(), Some(&Value::Bytes(48 * 1024)));
-        assert_eq!(spec(c, "L2 cache (per 2 threads)").value.value(), Some(&Value::Bytes(2 * 1024 * 1024)));
-        assert_eq!(spec(c, "L3 cache (shared)").value.value(), Some(&Value::Bytes(36864 * 1024)));
+        assert_eq!(spec(c, "L1 data cache (per 2 threads)").value.value(), Some(&Value::BinaryBytes(48 * 1024)));
+        assert_eq!(spec(c, "L2 cache (per 2 threads)").value.value(), Some(&Value::BinaryBytes(2 * 1024 * 1024)));
+        assert_eq!(spec(c, "L3 cache (shared)").value.value(), Some(&Value::BinaryBytes(36864 * 1024)));
         assert_eq!(spec(c, "Vendor").display(), "Intel");
         assert_eq!(spec(c, "Architecture").display(), "x86-64");
         assert_eq!(spec(c, "Family").display(), "6");
@@ -519,7 +519,7 @@ mod tests {
         let fx = Fx::new(&[("proc/cpuinfo", &block(0, 0, 0, FLAGS)), ("sys/devices/system/cpu/cpu0/cache/.keep", "")]);
         let c = &collect_from(fx.path())[0];
         let s = spec(c, "Cache size (as reported by CPU)");
-        assert_eq!(s.value.value(), Some(&Value::Bytes(36864 * 1024)));
+        assert_eq!(s.value.value(), Some(&Value::BinaryBytes(36864 * 1024)));
         assert_eq!(s.value.source, "procfs:/proc/cpuinfo");
     }
 

@@ -2,7 +2,7 @@
 //! Palette: warm ivory surface, deep graphite navigation, vermilion accent, muted sage support
 //! (see llm-docs/brand-and-design.md). Both modes share one token set.
 
-use gpui::{App, Global, Hsla, Pixels, px, rgb};
+use gpui::{App, Global, Hsla, rgb};
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum Mode {
@@ -31,7 +31,6 @@ pub struct Colors {
     pub accent_text: Hsla,
     pub on_accent: Hsla,
     pub sage: Hsla,
-    pub sage_text: Hsla,
     pub scrim: Hsla,
 }
 
@@ -58,7 +57,6 @@ impl Colors {
             accent_text: c(0xB23A25),
             on_accent: c(0xFFFFFF),
             sage: c(0x78917C),
-            sage_text: c(0x45604B),
             scrim: gpui::hsla(0.0, 0.0, 0.05, 0.38),
         }
     }
@@ -81,7 +79,6 @@ impl Colors {
             accent_text: c(0xF0836E),
             on_accent: c(0x1A1E1C),
             sage: c(0x8DA891),
-            sage_text: c(0x9DBBA1),
             scrim: gpui::hsla(0.0, 0.0, 0.0, 0.55),
         }
     }
@@ -112,11 +109,4 @@ impl ThemeExt for App {
     fn theme(&self) -> &Theme {
         self.global::<Theme>()
     }
-}
-
-pub fn text_sm() -> Pixels {
-    px(13.0)
-}
-pub fn text_base() -> Pixels {
-    px(14.5)
 }

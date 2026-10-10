@@ -16,7 +16,7 @@ use crate::theme::{Mode, Theme};
 
 actions!(
     facet,
-    [OpenSearch, OpenExport, Refresh, GoBack, ToggleTheme, CloseOverlay, MoveUp, MoveDown, Confirm, ToggleSources]
+    [OpenSearch, OpenExport, Refresh, GoBack, ToggleTheme, CloseOverlay, MoveUp, MoveDown, Confirm, ToggleSources, ToggleIdentifiers]
 );
 
 pub fn bind_keys(cx: &mut App) {
@@ -27,6 +27,7 @@ pub fn bind_keys(cx: &mut App) {
         KeyBinding::new("alt-left", GoBack, None),
         KeyBinding::new("ctrl-shift-l", ToggleTheme, None),
         KeyBinding::new("ctrl-shift-s", ToggleSources, None),
+        KeyBinding::new("ctrl-shift-i", ToggleIdentifiers, None),
         KeyBinding::new("escape", CloseOverlay, Some("Overlay")),
         KeyBinding::new("up", MoveUp, Some("Palette")),
         KeyBinding::new("down", MoveDown, Some("Palette")),
@@ -141,13 +142,19 @@ pub struct Facet {
     pub toast: Option<SharedString>,
     toast_epoch: u64,
     pub show_sources: bool,
+    /// Serial numbers, UUIDs and MAC addresses stay hidden until the user asks to see them.
+    pub show_identifiers: bool,
     pub tech_open: HashSet<String>,
     scrolls: HashMap<String, ScrollHandle>,
     pub focus: FocusHandle,
     pub new_ids: HashSet<String>,
     seen: HashSet<String>,
+    /// True once the first load has finished; only later arrivals count as "new".
+    settled: bool,
     source: Source,
     epoch: u64,
+    /// Set each frame from the window width; row builders adapt to it.
+    pub narrow: bool,
 }
 
 impl Facet {
@@ -168,13 +175,16 @@ impl Facet {
             toast: None,
             toast_epoch: 0,
             show_sources: false,
+            show_identifiers: false,
             tech_open: HashSet::new(),
             scrolls: HashMap::new(),
             focus: cx.focus_handle(),
             new_ids: HashSet::new(),
             seen: HashSet::new(),
+            settled: false,
             source,
             epoch: 0,
+            narrow: false,
         };
         this.apply_theme(window.appearance(), cx);
         cx.observe_window_appearance(window, |this, window, cx| {
@@ -275,6 +285,7 @@ impl Facet {
             Source::Fixture(inv) => {
                 let inv = inv.clone();
                 self.set_inventory(inv, cx);
+                self.settled = true;
                 self.load = Load::Ready;
             }
             Source::StuckLoading => self.load = Load::Loading { done: 2, total: 10 },
@@ -313,6 +324,7 @@ impl Facet {
         let inv = Inventory { components: self.parts.values().flatten().cloned().collect() };
         self.set_inventory(inv, cx);
         self.load = if done >= total {
+            self.settled = true;
             if self.parts.is_empty() { Load::Failed("No hardware collector produced data.".into()) } else { Load::Ready }
         } else {
             Load::Loading { done, total }
@@ -321,7 +333,7 @@ impl Facet {
     }
 
     fn set_inventory(&mut self, inv: Inventory, cx: &mut Context<Self>) {
-        let first = self.seen.is_empty();
+        let first = !self.settled;
         let ids: HashSet<String> = inv.components.iter().map(|c| c.id.clone()).collect();
         if !first {
             let fresh: HashSet<String> = ids.difference(&self.seen).cloned().collect();
@@ -376,6 +388,20 @@ impl Facet {
         cx.notify();
     }
 
+    pub fn toggle_identifiers(&mut self, _: &ToggleIdentifiers, _: &mut Window, cx: &mut Context<Self>) {
+        self.show_identifiers = !self.show_identifiers;
+        cx.notify();
+    }
+
+    /// Text for a spec in the UI: identifiers are hidden unless the user chose to show them.
+    pub fn spec_text(&self, s: &facet_core::Spec) -> (String, bool) {
+        if s.identifier && !self.show_identifiers && s.is_available() {
+            ("Hidden".to_owned(), true)
+        } else {
+            (s.display(), crate::widgets::is_absent(s))
+        }
+    }
+
     pub fn toggle_sources(&mut self, _: &ToggleSources, _: &mut Window, cx: &mut Context<Self>) {
         self.show_sources = !self.show_sources;
         cx.notify();
@@ -396,6 +422,15 @@ impl Facet {
         self.palette = Some(PaletteState { input, selected: 0, results: Vec::new(), _sub: sub });
         self.update_results("");
         cx.notify();
+    }
+
+    /// Open the palette pre-filled (used by `--overlay search --query ...` for design review).
+    pub fn open_search_with(&mut self, query: &str, window: &mut Window, cx: &mut Context<Self>) {
+        self.open_search(&OpenSearch, window, cx);
+        if let Some(p) = &self.palette {
+            let input = p.input.clone();
+            input.update(cx, |i, cx| i.set_text(query, cx));
+        }
     }
 
     fn update_results(&mut self, query: &str) {

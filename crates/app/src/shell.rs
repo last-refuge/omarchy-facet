@@ -16,6 +16,7 @@ impl Render for Facet {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let t = cx.theme().clone();
         let narrow = f32::from(window.viewport_size().width) < NARROW_BELOW;
+        self.narrow = narrow;
 
         let content: AnyElement = self.page_content(narrow, window, cx);
 
@@ -29,6 +30,7 @@ impl Render for Facet {
             .on_action(cx.listener(Self::go_back))
             .on_action(cx.listener(Self::toggle_theme))
             .on_action(cx.listener(Self::toggle_sources))
+            .on_action(cx.listener(Self::toggle_identifiers))
             .size_full()
             .flex()
             .bg(t.colors.surface)
@@ -60,6 +62,7 @@ impl Render for Facet {
 }
 
 impl Facet {
+    #[allow(clippy::too_many_arguments)]
     fn nav_item(
         &self,
         id: &'static str,
@@ -163,11 +166,12 @@ impl Facet {
         nav = nav.child(self.nav_item("nav-overview", "layout-dashboard", "Overview", None, self.page == Page::Overview, narrow, Page::Overview, cx));
         for c in Category::ALL {
             let n = self.count(c);
+            let shown = if n == 0 && self.load != Load::Ready { None } else { Some(n) };
             let active = matches!(&self.page, Page::Category(x) if *x == c);
             if n == 0 && !self.is_loading() && c != Category::System {
                 // Empty categories stay visible (and honest) rather than disappearing.
             }
-            nav = nav.child(self.nav_item(category_nav_id(c), category_icon(c), c.label(), Some(n), active, narrow, Page::Category(c), cx));
+            nav = nav.child(self.nav_item(category_nav_id(c), category_icon(c), c.label(), shown, active, narrow, Page::Category(c), cx));
         }
 
         nav = nav.child(div().flex_1()).child(div().h(px(1.)).my(px(8.)).bg(t.colors.nav_active));

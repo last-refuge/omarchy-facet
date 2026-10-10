@@ -52,7 +52,10 @@ impl Category {
 #[serde(tag = "unit", content = "v", rename_all = "snake_case")]
 pub enum Value {
     Text(String),
+    /// Decimal capacity as drives are labelled (1 TB = 10^12 B).
     Bytes(u64),
+    /// Binary size as memory and caches are labelled (1 GiB = 2^30 B).
+    BinaryBytes(u64),
     Hertz(u64),
     Celsius(f64),
     Percent(f64),
@@ -70,8 +73,17 @@ impl Value {
         match self {
             Value::Text(s) => s.clone(),
             Value::Bytes(b) => format_bytes(*b),
+            Value::BinaryBytes(b) => format_binary(*b),
             Value::Hertz(h) => {
-                if *h >= 1_000_000_000 { format!("{:.2} GHz", *h as f64 / 1e9) } else { format!("{:.0} MHz", *h as f64 / 1e6) }
+                if *h >= 1_000_000_000 {
+                    format!("{:.2} GHz", *h as f64 / 1e9)
+                } else if *h >= 1_000_000 {
+                    format!("{} MHz", trim(*h as f64 / 1e6))
+                } else if *h >= 1_000 {
+                    format!("{} kHz", trim(*h as f64 / 1e3))
+                } else {
+                    format!("{h} Hz")
+                }
             }
             Value::Celsius(c) => format!("{c:.0} °C"),
             Value::Percent(p) => format!("{p:.0}%"),
@@ -85,6 +97,17 @@ impl Value {
             }
         }
     }
+}
+
+fn format_binary(bytes: u64) -> String {
+    const UNITS: [&str; 5] = ["B", "KiB", "MiB", "GiB", "TiB"];
+    let mut v = bytes as f64;
+    let mut i = 0;
+    while v >= 1024.0 && i < UNITS.len() - 1 {
+        v /= 1024.0;
+        i += 1;
+    }
+    if i == 0 { format!("{bytes} B") } else { format!("{} {}", trim(v), UNITS[i]) }
 }
 
 fn trim(x: f64) -> String {
@@ -287,6 +310,12 @@ mod tests {
         assert_eq!(Value::Bps(2_500_000_000).display(), "2.5 Gb/s");
         assert_eq!(Value::Bps(1_000_000_000).display(), "1 Gb/s");
         assert_eq!(Value::Celsius(43.4).display(), "43 °C");
+        assert_eq!(Value::Hertz(165).display(), "165 Hz");
+        assert_eq!(Value::Hertz(59_940_000).display(), "59.9 MHz");
+        assert_eq!(Value::BinaryBytes(48 * 1024).display(), "48 KiB");
+        assert_eq!(Value::BinaryBytes(36864 * 1024).display(), "36 MiB");
+        assert_eq!(Value::BinaryBytes(32 * 1024 * 1024 * 1024).display(), "32 GiB");
+        assert_eq!(Value::BinaryBytes(32_567_160 * 1024).display(), "31.1 GiB");
     }
 
     #[test]

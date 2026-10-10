@@ -1,7 +1,7 @@
 //! Small shared building blocks.
 
 use facet_core::{Availability, Category, Component, Spec};
-use gpui::{Div, Hsla, IntoElement, ParentElement, Styled, Svg, div, prelude::*, px, svg};
+use gpui::{Div, Hsla, IntoElement, ParentElement, Styled, Svg, div, px, svg};
 
 use crate::theme::{MONO_FONT, Theme};
 
@@ -47,10 +47,25 @@ pub fn component_icon(c: &Component) -> &'static str {
         return "fan";
     }
     if id.starts_with("sensors:") {
-        return "gauge";
+        return if c.title.to_lowercase().contains("temperature") { "thermometer" } else { "gauge" };
+    }
+    if id.starts_with("bluetooth:") {
+        return "bluetooth";
     }
     if id.starts_with("pci:") {
         return "circuit-board";
+    }
+    if id.starts_with("usb:") || id.starts_with("input:") {
+        let kind = c.subtitle.as_deref().unwrap_or("").to_lowercase();
+        for (needle, icon) in [("keyboard", "keyboard"), ("mouse", "mouse"), ("pointing", "mouse"), ("touchpad", "mouse"), ("camera", "camera"), ("hub", "git-fork"), ("audio", "volume-2")] {
+            if kind.contains(needle) {
+                return icon;
+            }
+        }
+        return "usb";
+    }
+    if id.starts_with("sensors:") && c.title.to_lowercase().contains("temperature") {
+        return "thermometer";
     }
     category_icon(c.category)
 }

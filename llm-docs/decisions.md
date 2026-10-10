@@ -36,3 +36,8 @@ Format: decision, alternatives, why, date. Newest last.
 ## 2026-10-09 — v1 never calls UDisks2 methods
 - **Decision:** read UDisks2 properties only. No `SmartUpdate`, self-test, or other methods in v1.
 - **Why:** product boundary (inspection only); those calls need authorization and have side effects.
+
+## 2026-10-10 — Push to remote at the end of the run (user instruction)
+- **Decision:** at the end of the v1.0.0 run, commit and push the branch to `https://github.com/last-refuge/omarchy-facet.git` (the only remote authorised). Tags stay local unless the user asks.
+- **Why:** explicit user instruction mid-run; it overrides the earlier "no pushing" rule for this one destination only.
+- **Pre-push audit (required):** grep the tree for real identifiers captured during development (drive serials, MAC/Bluetooth addresses, UUIDs, hostnames, usernames) and replace them with obviously fictional values before pushing.
