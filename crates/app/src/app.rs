@@ -521,7 +521,7 @@ impl Facet {
                 }
                 // Debounce a burst of events (one plug produces many) into a single re-read.
                 cx.background_executor().timer(Duration::from_millis(600)).await;
-                while let Ok(Some(_)) = rx.try_next() {}
+                while rx.try_recv().is_ok() {}
                 let alive = this.update(cx, |this, cx| {
                     if this.settled && !this.is_loading() {
                         this.start_load(cx);
