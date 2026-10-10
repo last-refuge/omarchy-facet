@@ -131,6 +131,8 @@ pub enum ExportFormat {
 pub struct ExportState {
     pub format: ExportFormat,
     pub include_identifiers: bool,
+    /// Focus targets inside the dialog, in Tab order: close, text, json, identifiers, save, copy.
+    pub handles: Vec<FocusHandle>,
 }
 
 pub struct PaletteState {
@@ -671,6 +673,22 @@ impl Facet {
         }
     }
 
+    /// Tab inside a modal: cycle within the dialog (export) or hold still (palette, which uses arrows).
+    /// Returns true when the key was handled.
+    pub fn trap_tab(&mut self, shift: bool, window: &mut Window, cx: &mut Context<Self>) -> bool {
+        if let Some(e) = &self.export {
+            let n = e.handles.len();
+            let next = match e.handles.iter().position(|h| h.is_focused(window)) {
+                Some(i) if shift => (i + n - 1) % n,
+                Some(i) => (i + 1) % n,
+                None => 0,
+            };
+            window.focus(&e.handles[next], cx);
+            return true;
+        }
+        self.palette.is_some()
+    }
+
     pub fn close_overlay(&mut self, _: &CloseOverlay, window: &mut Window, cx: &mut Context<Self>) {
         self.palette = None;
         self.export = None;
@@ -682,8 +700,9 @@ impl Facet {
 
     pub fn open_export(&mut self, _: &OpenExport, window: &mut Window, cx: &mut Context<Self>) {
         self.palette = None;
-        self.export = Some(ExportState { format: ExportFormat::Text, include_identifiers: false });
-        window.focus(&self.focus, cx);
+        let handles: Vec<FocusHandle> = (0..6).map(|_| cx.focus_handle()).collect();
+        window.focus(&handles[1], cx);
+        self.export = Some(ExportState { format: ExportFormat::Text, include_identifiers: false, handles });
         cx.notify();
     }
 

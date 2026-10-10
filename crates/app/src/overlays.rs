@@ -7,7 +7,7 @@ use gpui::{
 
 use crate::app::{ExportFormat, Facet, Page};
 use crate::theme::{MONO_FONT, ThemeExt};
-use crate::widgets::{component_icon, icon, pluralize};
+use crate::widgets::{Activate, component_icon, icon, pluralize};
 
 impl Facet {
     fn scrim(&self, cx: &Context<Self>) -> gpui::Stateful<gpui::Div> {
@@ -72,7 +72,7 @@ impl Facet {
                     .cursor_pointer()
                     .when(active, |d| d.bg(t.colors.hover))
                     .hover(|s| s.bg(t.colors.hover))
-                    .on_click(cx.listener(move |this, _: &ClickEvent, window, cx| this.go(Page::Component(id.clone()), window, cx)))
+                    .on_activate(cx, move |this, window, cx| this.go(Page::Component(id.clone()), window, cx))
                     .child(icon(component_icon(c), 17., if active { t.colors.accent_text } else { t.colors.muted }))
                     .child(
                         div()
@@ -139,6 +139,7 @@ impl Facet {
     pub fn export_overlay(&mut self, window: &mut Window, cx: &mut Context<Self>) -> Option<AnyElement> {
         let t = cx.theme().clone();
         let state = self.export.as_ref()?;
+        let handles = state.handles.clone();
         let format = state.format;
         let include = state.include_identifiers;
         let preview = self.export_text();
@@ -147,10 +148,11 @@ impl Facet {
         let panel_w = (width - 32.).clamp(300., 780.);
         let height = f32::from(window.viewport_size().height);
 
-        let seg = |id: &'static str, label: &'static str, f: ExportFormat, cx: &mut Context<Self>| {
+        let seg = |id: &'static str, label: &'static str, f: ExportFormat, handle: gpui::FocusHandle, cx: &mut Context<Self>| {
             let active = format == f;
             div()
                 .id(id)
+                .track_focus(&handle)
                 .role(Role::Button)
                 .aria_label(format!("{label} format"))
                 .tab_index(0)
@@ -161,17 +163,18 @@ impl Facet {
                 .cursor_pointer()
                 .when(active, |d| d.bg(t.colors.accent).text_color(t.colors.on_accent).font_weight(FontWeight::SEMIBOLD))
                 .when(!active, |d| d.hover(|s| s.bg(t.colors.hover)))
-                .on_click(cx.listener(move |this, _: &ClickEvent, _, cx| {
+                .on_activate(cx, move |this, _, cx| {
                     if let Some(e) = this.export.as_mut() {
                         e.format = f;
                     }
                     cx.notify();
-                }))
+                })
                 .child(label)
         };
 
         let checkbox = div()
             .id("include-identifiers")
+            .track_focus(&handles[3])
             .role(Role::CheckBox)
             .aria_label("Include serial numbers, UUIDs and MAC addresses")
             .tab_index(0)
@@ -183,12 +186,12 @@ impl Facet {
             .border_1()
             .border_color(transparent_black())
             .focus_visible(|s| s.border_color(t.colors.accent))
-            .on_click(cx.listener(|this, _: &ClickEvent, _, cx| {
+            .on_activate(cx, move |this, _, cx| {
                 if let Some(e) = this.export.as_mut() {
                     e.include_identifiers = !e.include_identifiers;
                 }
                 cx.notify();
-            }))
+            })
             .child(
                 div()
                     .size(px(18.))
@@ -233,6 +236,7 @@ impl Facet {
                     .child(div().flex().justify_between().items_center().child(div().text_size(px(20.)).font_weight(FontWeight::SEMIBOLD).child("Export report")).child(
                         div()
                             .id("export-close")
+                            .track_focus(&handles[0])
                             .role(Role::Button)
                             .aria_label("Close")
                             .tab_index(0)
@@ -243,7 +247,7 @@ impl Facet {
                             .rounded(px(6.))
                             .cursor_pointer()
                             .hover(|s| s.bg(t.colors.hover))
-                            .on_click(cx.listener(|this, _: &ClickEvent, window, cx| this.close_overlay(&crate::app::CloseOverlay, window, cx)))
+                            .on_activate(cx, move |this, window, cx| this.close_overlay(&crate::app::CloseOverlay, window, cx))
                             .child(icon("x", 16., t.colors.muted)),
                     ))
                     .child(div().text_size(px(13.)).text_color(t.colors.muted).child("Preview exactly what will be copied or saved. Identifying values are hidden unless you include them."))
@@ -254,7 +258,7 @@ impl Facet {
                             .items_center()
                             .gap_x(px(24.))
                             .gap_y(px(10.))
-                            .child(div().flex().rounded(px(8.)).border_1().border_color(t.colors.hairline_strong).overflow_hidden().child(seg("fmt-text", "Readable text", ExportFormat::Text, cx)).child(seg("fmt-json", "JSON", ExportFormat::Json, cx)))
+                            .child(div().flex().rounded(px(8.)).border_1().border_color(t.colors.hairline_strong).overflow_hidden().child(seg("fmt-text", "Readable text", ExportFormat::Text, handles[1].clone(), cx)).child(seg("fmt-json", "JSON", ExportFormat::Json, handles[2].clone(), cx)))
                             .child(checkbox),
                     ),
             )
@@ -289,8 +293,8 @@ impl Facet {
                         div()
                             .flex()
                             .gap(px(10.))
-                            .child(self.button("export-save", "Save…", false, cx, |this, window, cx| this.save_export(window, cx)))
-                            .child(self.button("export-copy", "Copy report", true, cx, move |this, _, cx| {
+                            .child(self.button_focus("export-save", "Save…", false, Some(handles[4].clone()), cx, |this, window, cx| this.save_export(window, cx)))
+                            .child(self.button_focus("export-copy", "Copy report", true, Some(handles[5].clone()), cx, move |this, _, cx| {
                                 cx.write_to_clipboard(gpui::ClipboardItem::new_string(copy_text.clone()));
                                 this.show_toast("Report copied to the clipboard".into(), cx);
                             })),

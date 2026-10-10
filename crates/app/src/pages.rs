@@ -9,7 +9,7 @@ use gpui::{
 
 use crate::app::{Facet, Load, Page, ThemePref};
 use crate::theme::{MONO_FONT, Mode, ThemeExt};
-use crate::widgets::{absence_reason, category_icon, component_icon, eyebrow, icon, mono, pluralize, sparkline};
+use crate::widgets::{Activate, absence_reason, category_icon, component_icon, eyebrow, icon, mono, pluralize, sparkline};
 
 /// Short human phrase for a summary spec, or `None` when it adds nothing ("No").
 fn fact(s: &Spec, first: bool) -> Option<String> {
@@ -154,9 +154,23 @@ impl Facet {
         cx: &mut Context<Self>,
         f: impl Fn(&mut Self, &mut Window, &mut Context<Self>) + 'static,
     ) -> impl IntoElement {
+        self.button_focus(id, label, primary, None, cx, f)
+    }
+
+    /// A button that can also be a target of a dialog's own Tab cycle.
+    pub fn button_focus(
+        &self,
+        id: &'static str,
+        label: &str,
+        primary: bool,
+        focus: Option<gpui::FocusHandle>,
+        cx: &mut Context<Self>,
+        f: impl Fn(&mut Self, &mut Window, &mut Context<Self>) + 'static,
+    ) -> impl IntoElement {
         let t = cx.theme().clone();
         div()
             .id(id)
+            .when_some(focus, |d, h| d.track_focus(&h))
             .role(Role::Button)
             .aria_label(label.to_owned())
             .tab_index(0)
@@ -173,7 +187,7 @@ impl Facet {
             .when(primary, |d| d.bg(t.colors.accent).border_color(t.colors.accent).text_color(t.colors.on_accent).hover(|s| s.opacity(0.92)))
             .when(!primary, |d| d.border_color(t.colors.hairline_strong).hover(|s| s.bg(t.colors.hover)))
             .focus_visible(|s| s.border_color(t.colors.text))
-            .on_click(cx.listener(move |this, _: &ClickEvent, window, cx| f(this, window, cx)))
+            .on_activate(cx, move |this, window, cx| f(this, window, cx))
             .child(label.to_owned())
     }
 
@@ -221,7 +235,7 @@ impl Facet {
             .cursor_pointer()
             .hover(|s| s.bg(t.colors.hover))
             .focus_visible(|s| s.border_color(t.colors.accent))
-            .on_click(cx.listener(move |this, _: &ClickEvent, window, cx| this.go(Page::Component(id.clone()), window, cx)))
+            .on_activate(cx, move |this, window, cx| this.go(Page::Component(id.clone()), window, cx))
             .relative()
             .when(is_new, |d| d.child(div().absolute().left_0().top(px(8.)).bottom(px(8.)).w(px(3.)).rounded(px(2.)).bg(t.colors.accent)))
             .child(icon(component_icon(c), 19., t.colors.muted))
@@ -353,7 +367,7 @@ impl Facet {
             .cursor_pointer()
             .hover(|s| s.bg(t.colors.hover))
             .focus_visible(|s| s.border_color(t.colors.accent))
-            .on_click(cx.listener(move |this, _: &ClickEvent, window, cx| this.go(Page::Component(id.clone()), window, cx)))
+            .on_activate(cx, move |this, window, cx| this.go(Page::Component(id.clone()), window, cx))
             .relative()
             .when(is_new, |d| d.child(div().absolute().left_0().top(px(8.)).bottom(px(8.)).w(px(3.)).rounded(px(2.)).bg(t.colors.accent)))
             .child(icon(component_icon(c), 18., t.colors.muted))
@@ -463,7 +477,7 @@ impl Facet {
             .when(!absent, |d| {
                 d.hover(|s| s.bg(t.colors.hover))
                     .focus_visible(|s| s.border_color(t.colors.accent).bg(t.colors.hover))
-                    .on_click(cx.listener(move |this, _: &ClickEvent, _, cx| this.copy(copy.clone(), cx)))
+                    .on_activate(cx, move |this, _, cx| this.copy(copy.clone(), cx))
             })
             .child(
                 div()
@@ -558,7 +572,7 @@ impl Facet {
                         .id(SharedString::from(format!("sum-{}-{}", c.id, s.label)))
                         .role(if absent { Role::GenericContainer } else { Role::Button })
                         .aria_label(format!("{}: {}", s.label, text))
-                        .when(!absent, |d| d.tab_index(0).cursor_pointer().hover(|x| x.text_color(t.colors.accent_text)).focus_visible(|x| x.text_color(t.colors.accent_text)).on_click(cx.listener(move |this, _: &ClickEvent, _, cx| this.copy(copy.clone(), cx))))
+                        .when(!absent, |d| d.tab_index(0).cursor_pointer().hover(|x| x.text_color(t.colors.accent_text)).focus_visible(|x| x.text_color(t.colors.accent_text)).on_activate(cx, move |this, _, cx| this.copy(copy.clone(), cx)))
                         .flex()
                         .flex_col()
                         .gap(px(2.))
@@ -602,12 +616,12 @@ impl Facet {
                     .text_color(t.colors.accent_text)
                     .font_weight(FontWeight::SEMIBOLD)
                     .focus_visible(|s| s.border_color(t.colors.accent))
-                    .on_click(cx.listener(move |this, _: &ClickEvent, _, cx| {
+                    .on_activate(cx, move |this, _, cx| {
                         if !this.tech_open.remove(&cid) {
                             this.tech_open.insert(cid.clone());
                         }
                         cx.notify();
-                    }))
+                    })
                     .child(icon(if tech_open { "chevron-down" } else { "chevron-right" }, 15., t.colors.accent_text))
                     .child("Technical details"),
             );
@@ -692,7 +706,7 @@ impl Facet {
                     .cursor_pointer()
                     .when(active, |d| d.bg(t.colors.accent).text_color(t.colors.on_accent).font_weight(FontWeight::SEMIBOLD))
                     .when(!active, |d| d.hover(|s| s.bg(t.colors.hover)))
-                    .on_click(cx.listener(move |this, _: &ClickEvent, window, cx| this.set_theme_pref(pref, window, cx)))
+                    .on_activate(cx, move |this, window, cx| this.set_theme_pref(pref, window, cx))
                     .child(label),
             );
         }
@@ -734,7 +748,7 @@ impl Facet {
                             .border_1()
                             .border_color(transparent_black())
                             .focus_visible(|s| s.border_color(t.colors.accent))
-                            .on_click(cx.listener(|this, _: &ClickEvent, _, cx| this.set_live(!this.live, cx)))
+                            .on_activate(cx, move |this, _, cx| this.set_live(!this.live, cx))
                             .child(
                                 div()
                                     .size(px(18.))

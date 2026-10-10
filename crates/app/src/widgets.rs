@@ -1,6 +1,11 @@
 //! Small shared building blocks.
 
+use std::rc::Rc;
+
 use facet_core::{Availability, Category, Component, Spec};
+use gpui::{ClickEvent, Context, InteractiveElement, KeyDownEvent, StatefulInteractiveElement, Window};
+
+use crate::app::Facet;
 use gpui::{Div, Hsla, IntoElement, ParentElement, Styled, Svg, div, px, svg};
 
 use crate::theme::{MONO_FONT, Theme};
@@ -117,4 +122,25 @@ pub fn pluralize(n: usize, one: &str, many: &str) -> String {
 #[allow(dead_code)]
 pub fn into_el(e: impl IntoElement) -> gpui::AnyElement {
     e.into_any_element()
+}
+
+/// One handler for both mouse and keyboard: a click, or Enter/Space while focused. Every control
+/// uses this so keyboard users can do everything pointer users can.
+pub trait Activate: Sized {
+    fn on_activate(self, cx: &mut Context<Facet>, f: impl Fn(&mut Facet, &mut Window, &mut Context<Facet>) + 'static) -> Self;
+}
+
+impl<T: StatefulInteractiveElement> Activate for T {
+    fn on_activate(self, cx: &mut Context<Facet>, f: impl Fn(&mut Facet, &mut Window, &mut Context<Facet>) + 'static) -> Self {
+        let f = Rc::new(f);
+        let for_key = f.clone();
+        let click = cx.listener(move |this, _: &ClickEvent, window, cx| f(this, window, cx));
+        let key = cx.listener(move |this, ev: &KeyDownEvent, window, cx| {
+            if matches!(ev.keystroke.key.as_str(), "enter" | "space") {
+                for_key(this, window, cx);
+                cx.stop_propagation();
+            }
+        });
+        self.on_click(click).on_key_down(key)
+    }
 }

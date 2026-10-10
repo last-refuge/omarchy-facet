@@ -8,7 +8,7 @@ use gpui::{
 
 use crate::app::{Facet, Load, Page};
 use crate::theme::{ThemeExt, UI_FONT};
-use crate::widgets::{category_icon, icon, pluralize};
+use crate::widgets::{Activate, category_icon, icon, pluralize};
 
 pub const NARROW_BELOW: f32 = 880.0;
 
@@ -27,6 +27,17 @@ impl Render for Facet {
             .id("facet-root")
             .key_context(if self.export.is_some() { "Facet Overlay" } else { "Facet" })
             .track_focus(&self.focus)
+            .on_key_down(cx.listener(|this, ev: &gpui::KeyDownEvent, window, cx| {
+                // GPUI doesn't move focus on Tab by itself; modals trap it.
+                if ev.keystroke.key == "tab" {
+                    let shift = ev.keystroke.modifiers.shift;
+                    if !this.trap_tab(shift, window, cx) {
+                        if shift { window.focus_prev(cx) } else { window.focus_next(cx) }
+                    }
+                    cx.stop_propagation();
+                }
+            }))
+            .on_action(cx.listener(Self::close_overlay))
             .on_action(cx.listener(Self::open_search))
             .on_action(cx.listener(Self::open_export))
             .on_action(cx.listener(Self::refresh))
@@ -103,7 +114,7 @@ impl Facet {
             .cursor_pointer()
             .hover(|s| s.bg(t.colors.nav_active).text_color(t.colors.nav_text))
             .focus_visible(|s| s.border_color(t.colors.accent))
-            .on_click(cx.listener(move |this, _: &ClickEvent, window, cx| this.go(page.clone(), window, cx)))
+            .on_activate(cx, move |this, window, cx| this.go(page.clone(), window, cx))
             .child(icon(icon_name, 17., if active { t.colors.accent } else { fg }))
             .when(!narrow, |d| {
                 d.child(div().flex_1().text_size(px(14.)).child(label.to_owned())).when_some(count, |d, n| {
@@ -227,7 +238,7 @@ impl Facet {
                     .text_color(t.colors.muted)
                     .hover(|s| s.bg(t.colors.hover).text_color(t.colors.text))
                     .focus_visible(|s| s.border_color(t.colors.accent))
-                    .on_click(cx.listener(|this, _: &ClickEvent, window, cx| this.go_back(&crate::app::GoBack, window, cx)))
+                    .on_activate(cx, move |this, window, cx| this.go_back(&crate::app::GoBack, window, cx))
                     .child(icon("chevron-left", 16., t.colors.muted)),
             );
         }
@@ -250,7 +261,7 @@ impl Facet {
                     .text_color(t.colors.muted)
                     .hover(|s| s.text_color(t.colors.accent_text))
                     .focus_visible(|s| s.border_color(t.colors.accent))
-                    .on_click(cx.listener(move |this, _: &ClickEvent, window, cx| this.go(p.clone(), window, cx)))
+                    .on_activate(cx, move |this, window, cx| this.go(p.clone(), window, cx))
                     .child(label)
                     .into_any_element(),
                 _ => div().text_color(t.colors.text).font_weight(FontWeight::SEMIBOLD).truncate().child(label).into_any_element(),
@@ -277,7 +288,7 @@ impl Facet {
             .cursor_pointer()
             .hover(|s| s.bg(t.colors.hover))
             .focus_visible(|s| s.border_color(t.colors.accent))
-            .on_click(cx.listener(|this, _: &ClickEvent, window, cx| this.open_search(&crate::app::OpenSearch, window, cx)))
+            .on_activate(cx, move |this, window, cx| this.open_search(&crate::app::OpenSearch, window, cx))
             .child(icon("search", 15., t.colors.muted))
             .when(!narrow, |d| {
                 d.child(div().flex_1().text_size(px(13.)).child("Search hardware"))
@@ -305,7 +316,7 @@ impl Facet {
             .cursor_pointer()
             .hover(|s| s.opacity(0.92))
             .focus_visible(|s| s.border_color(t.colors.text))
-            .on_click(cx.listener(|this, _: &ClickEvent, window, cx| this.open_export(&crate::app::OpenExport, window, cx)))
+            .on_activate(cx, move |this, window, cx| this.open_export(&crate::app::OpenExport, window, cx))
             .child(icon("download", 15., t.colors.on_accent))
             .when(!narrow, |d| d.child("Export report"));
 
