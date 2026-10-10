@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 1.0.2
 
 - Temperature unit setting: Fahrenheit (default) or Celsius, in Preferences. Shared by the app, `facet` (`--celsius` / `--fahrenheit` for one run, `FACET_TEMPERATURE_UNIT=c`) and the bar widget. Stored readings and exported JSON always stay in degrees Celsius.
 

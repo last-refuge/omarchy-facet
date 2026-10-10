@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "id": "facet.hardware",
   "name": "Facet",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "author": "Facet authors",
   "description": "Live hardware readings in the bar, and a way into Facet, the hardware explorer.",
   "kinds": ["bar-widget"],
