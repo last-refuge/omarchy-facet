@@ -69,6 +69,15 @@ pub enum Value {
 }
 
 impl Value {
+    /// Numeric magnitude for trend charts; `None` for text and booleans.
+    pub fn as_f64(&self) -> Option<f64> {
+        Some(match self {
+            Value::Text(_) | Value::Bool(_) => return None,
+            Value::Bytes(v) | Value::BinaryBytes(v) | Value::Hertz(v) | Value::Count(v) | Value::Rpm(v) | Value::Bps(v) => *v as f64,
+            Value::Celsius(v) | Value::Percent(v) | Value::Watts(v) | Value::Volts(v) => *v,
+        })
+    }
+
     pub fn display(&self) -> String {
         match self {
             Value::Text(s) => s.clone(),

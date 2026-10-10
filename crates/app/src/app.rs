@@ -1,10 +1,10 @@
 //! Application state and behaviour. Rendering lives in `shell.rs`, `pages.rs` and `overlays.rs`.
 
-use std::collections::{BTreeMap, HashMap, HashSet};
+use std::collections::{BTreeMap, HashMap, HashSet, VecDeque};
 use std::path::PathBuf;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
-use facet_core::{Category, Component, Inventory, Report};
+use facet_core::{Category, Component, Inventory, Report, Value};
 use gpui::{
     App, ClipboardItem, Context, Entity, FocusHandle, Focusable, KeyBinding, ScrollHandle, SharedString, Subscription,
     WeakEntity, Window, actions, prelude::*,
@@ -16,7 +16,7 @@ use crate::theme::{Mode, Theme};
 
 actions!(
     facet,
-    [OpenSearch, OpenExport, Refresh, GoBack, ToggleTheme, CloseOverlay, MoveUp, MoveDown, Confirm, ToggleSources, ToggleIdentifiers]
+    [OpenSearch, OpenExport, Refresh, GoBack, ToggleTheme, CloseOverlay, MoveUp, MoveDown, Confirm, ToggleSources, ToggleIdentifiers, ToggleLive]
 );
 
 pub fn bind_keys(cx: &mut App) {
@@ -28,6 +28,7 @@ pub fn bind_keys(cx: &mut App) {
         KeyBinding::new("ctrl-shift-l", ToggleTheme, None),
         KeyBinding::new("ctrl-shift-s", ToggleSources, None),
         KeyBinding::new("ctrl-shift-i", ToggleIdentifiers, None),
+        KeyBinding::new("ctrl-shift-m", ToggleLive, None),
         KeyBinding::new("escape", CloseOverlay, Some("Overlay")),
         KeyBinding::new("up", MoveUp, Some("Palette")),
         KeyBinding::new("down", MoveDown, Some("Palette")),
@@ -69,6 +70,16 @@ impl Page {
             }
         }
     }
+}
+
+/// Samples kept per live reading: 90 at one every two seconds is three minutes.
+const HISTORY_CAP: usize = 90;
+
+#[derive(Clone, PartialEq, Eq, Debug)]
+pub enum Hotplug {
+    Off,
+    Active,
+    Unavailable(String),
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -148,7 +159,16 @@ pub struct Facet {
     scrolls: HashMap<String, ScrollHandle>,
     pub focus: FocusHandle,
     pub new_ids: HashSet<String>,
-    seen: HashSet<String>,
+    staging: BTreeMap<usize, Vec<Component>>,
+    staging_done: usize,
+    round_failures: Vec<String>,
+    last_updated: Option<Instant>,
+    /// Live monitoring re-reads every two seconds and keeps a bounded history of live numbers.
+    pub live: bool,
+    samples: HashMap<String, VecDeque<f64>>,
+    live_task: Option<gpui::Task<()>>,
+    pub hotplug: Hotplug,
+    hotplug_task: Option<gpui::Task<()>>,
     /// True once the first load has finished; only later arrivals count as "new".
     settled: bool,
     source: Source,
@@ -180,7 +200,15 @@ impl Facet {
             scrolls: HashMap::new(),
             focus: cx.focus_handle(),
             new_ids: HashSet::new(),
-            seen: HashSet::new(),
+            staging: BTreeMap::new(),
+            staging_done: 0,
+            round_failures: Vec::new(),
+            last_updated: None,
+            live: false,
+            samples: HashMap::new(),
+            live_task: None,
+            hotplug: Hotplug::Off,
+            hotplug_task: None,
             settled: false,
             source,
             epoch: 0,
@@ -193,6 +221,9 @@ impl Facet {
         })
         .detach();
         this.start_load(cx);
+        if matches!(this.source, Source::Live) {
+            this.start_hotplug(cx);
+        }
         window.focus(&this.focus, cx);
         this
     }
@@ -280,11 +311,18 @@ impl Facet {
     pub fn start_load(&mut self, cx: &mut Context<Self>) {
         self.epoch += 1;
         let epoch = self.epoch;
-        self.failures.clear();
+        self.staging.clear();
+        self.staging_done = 0;
+        self.round_failures.clear();
         match &self.source {
             Source::Fixture(inv) => {
                 let inv = inv.clone();
-                self.set_inventory(inv, cx);
+                if self.settled {
+                    self.commit_inventory(inv, cx);
+                    self.last_updated = Some(Instant::now());
+                } else {
+                    self.inv = inv;
+                }
                 self.settled = true;
                 self.load = Load::Ready;
             }
@@ -292,7 +330,12 @@ impl Facet {
             Source::Broken(msg) => self.load = Load::Failed(msg.clone()),
             Source::Live => {
                 let total = facet_collectors::COLLECTORS.len();
-                self.load = Load::Loading { done: 0, total };
+                if !self.settled {
+                    // First load is progressive: collectors fill in as they finish.
+                    self.load = Load::Loading { done: 0, total };
+                    self.parts.clear();
+                    self.failures.clear();
+                }
                 for (i, (name, collect)) in facet_collectors::COLLECTORS.iter().enumerate() {
                     let collect = *collect;
                     let name = *name;
@@ -306,44 +349,205 @@ impl Facet {
         }
     }
 
+    fn concat_parts(parts: &BTreeMap<usize, Vec<Component>>) -> Inventory {
+        Inventory { components: parts.values().flatten().cloned().collect() }
+    }
+
     fn part_done(&mut self, epoch: u64, index: usize, name: &str, comps: Option<Vec<Component>>, cx: &mut Context<Self>) {
         if epoch != self.epoch {
             return; // a newer refresh superseded this one
         }
+        let total = facet_collectors::COLLECTORS.len();
+        if !self.settled {
+            match comps {
+                Some(c) => {
+                    self.parts.insert(index, c);
+                }
+                None => self.failures.push(format!("The {name} collector failed unexpectedly.")),
+            }
+            let done = self.parts.len() + self.failures.len();
+            self.inv = Self::concat_parts(&self.parts);
+            self.load = if done >= total {
+                crate::timing("all-collectors-done-ms");
+                self.settled = true;
+                self.last_updated = Some(Instant::now());
+                if self.parts.is_empty() { Load::Failed("No hardware collector produced data.".into()) } else { Load::Ready }
+            } else {
+                Load::Loading { done, total }
+            };
+            cx.notify();
+            return;
+        }
+        // Refreshes are staged and swapped in atomically, so nobody sees a half-updated machine and a
+        // collector that fails keeps its last good reading (flagged) instead of vanishing or going stale silently.
         match comps {
             Some(c) => {
-                self.parts.insert(index, c);
+                self.staging.insert(index, c);
             }
             None => {
-                self.parts.remove(&index);
-                self.failures.push(format!("The {name} collector failed unexpectedly."));
+                if let Some(old) = self.parts.get(&index) {
+                    self.staging.insert(index, old.clone());
+                }
+                self.round_failures.push(format!("The {name} collector failed; showing its last good reading."));
             }
         }
-        let total = facet_collectors::COLLECTORS.len();
-        let done = self.parts.len() + self.failures.len();
-        let inv = Inventory { components: self.parts.values().flatten().cloned().collect() };
-        self.set_inventory(inv, cx);
-        self.load = if done >= total {
-            self.settled = true;
-            if self.parts.is_empty() { Load::Failed("No hardware collector produced data.".into()) } else { Load::Ready }
+        self.staging_done += 1;
+        if self.staging_done >= total {
+            self.parts = std::mem::take(&mut self.staging);
+            self.failures = std::mem::take(&mut self.round_failures);
+            let inv = Self::concat_parts(&self.parts);
+            self.commit_inventory(inv, cx);
+            self.last_updated = Some(Instant::now());
+            self.load = Load::Ready;
+            cx.notify();
+        }
+    }
+
+    /// Swap in a refreshed inventory, noting what appeared and disappeared.
+    fn commit_inventory(&mut self, inv: Inventory, cx: &mut Context<Self>) {
+        let old: HashMap<&str, &str> = self.inv.components.iter().map(|c| (c.id.as_str(), c.title.as_str())).collect();
+        let new: HashMap<&str, &str> = inv.components.iter().map(|c| (c.id.as_str(), c.title.as_str())).collect();
+        let mut added: Vec<&str> = inv.components.iter().filter(|c| !old.contains_key(c.id.as_str())).map(|c| c.title.as_str()).collect();
+        let mut removed: Vec<&str> = self.inv.components.iter().filter(|c| !new.contains_key(c.id.as_str())).map(|c| c.title.as_str()).collect();
+        added.truncate(2);
+        removed.truncate(2);
+        let fresh: Vec<String> = inv.components.iter().filter(|c| !old.contains_key(c.id.as_str())).map(|c| c.id.clone()).collect();
+        let mut msg = Vec::new();
+        if !added.is_empty() {
+            msg.push(format!("New hardware: {}", added.join(", ")));
+        }
+        if !removed.is_empty() {
+            msg.push(format!("Removed: {}", removed.join(", ")));
+        }
+        self.inv = inv;
+        if !fresh.is_empty() {
+            self.new_ids.extend(fresh);
+            self.schedule_clear_new(cx);
+        }
+        if self.live {
+            self.record_history();
+        }
+        if !msg.is_empty() {
+            self.show_toast(msg.join("  ·  "), cx);
+        }
+    }
+
+    // ---- live monitoring and history ------------------------------------------------------
+
+    fn record_history(&mut self) {
+        let mut keep = HashSet::new();
+        for c in &self.inv.components {
+            for sp in c.all_specs().filter(|sp| sp.live) {
+                if let Some(v) = sp.value.value().and_then(Value::as_f64) {
+                    let key = format!("{}|{}", c.id, sp.label);
+                    let h = self.samples.entry(key.clone()).or_default();
+                    h.push_back(v);
+                    while h.len() > HISTORY_CAP {
+                        h.pop_front();
+                    }
+                    keep.insert(key);
+                }
+            }
+        }
+        // History for devices that are gone must not linger or grow.
+        self.samples.retain(|k, _| keep.contains(k));
+    }
+
+    pub fn history_for(&self, owner: &str, label: &str) -> Option<&VecDeque<f64>> {
+        self.samples.get(&format!("{owner}|{label}")).filter(|h| h.len() >= 3)
+    }
+
+    pub fn toggle_live(&mut self, _: &ToggleLive, _: &mut Window, cx: &mut Context<Self>) {
+        self.set_live(!self.live, cx);
+    }
+
+    pub fn set_live(&mut self, on: bool, cx: &mut Context<Self>) {
+        self.live = on;
+        self.live_task = None;
+        if on {
+            self.record_history();
+            self.live_task = Some(cx.spawn(async move |this: WeakEntity<Self>, cx| {
+                loop {
+                    cx.background_executor().timer(Duration::from_secs(2)).await;
+                    let alive = this.update(cx, |this, cx| {
+                        if this.settled && !this.is_loading() {
+                            this.start_load(cx);
+                        }
+                    });
+                    if alive.is_err() {
+                        break;
+                    }
+                }
+            }));
         } else {
-            Load::Loading { done, total }
-        };
+            self.samples.clear();
+        }
         cx.notify();
     }
 
-    fn set_inventory(&mut self, inv: Inventory, cx: &mut Context<Self>) {
-        let first = !self.settled;
-        let ids: HashSet<String> = inv.components.iter().map(|c| c.id.clone()).collect();
-        if !first {
-            let fresh: HashSet<String> = ids.difference(&self.seen).cloned().collect();
-            if !fresh.is_empty() {
-                self.new_ids.extend(fresh);
-                self.schedule_clear_new(cx);
+    /// Seconds since the last completed read, for the "updated" label.
+    pub fn age_secs(&self) -> Option<u64> {
+        self.last_updated.map(|t| t.elapsed().as_secs())
+    }
+
+    // ---- hotplug --------------------------------------------------------------------------
+
+    pub fn start_hotplug(&mut self, cx: &mut Context<Self>) {
+        use futures::StreamExt;
+        let (tx, mut rx) = futures::channel::mpsc::unbounded::<Result<(), String>>();
+        let spawned = std::thread::Builder::new().name("facet-hotplug".into()).spawn(move || {
+            let events = tx.clone();
+            let result = facet_collectors::hotplug::watch(move |_| {
+                let _ = events.unbounded_send(Ok(()));
+            });
+            if let Err(e) = result {
+                let _ = tx.unbounded_send(Err(e.to_string()));
             }
+        });
+        if let Err(e) = spawned {
+            self.hotplug = Hotplug::Unavailable(e.to_string());
+            return;
         }
-        self.seen.extend(ids);
-        self.inv = inv;
+        self.hotplug = Hotplug::Active;
+        self.hotplug_task = Some(cx.spawn(async move |this: WeakEntity<Self>, cx| {
+            while let Some(msg) = rx.next().await {
+                if let Err(e) = msg {
+                    this.update(cx, |this, cx| {
+                        this.hotplug = Hotplug::Unavailable(e);
+                        cx.notify();
+                    })
+                    .ok();
+                    break;
+                }
+                // Debounce a burst of events (one plug produces many) into a single re-read.
+                cx.background_executor().timer(Duration::from_millis(600)).await;
+                while let Ok(Some(_)) = rx.try_next() {}
+                let alive = this.update(cx, |this, cx| {
+                    if this.settled && !this.is_loading() {
+                        this.start_load(cx);
+                    }
+                });
+                if alive.is_err() {
+                    break;
+                }
+            }
+        }));
+    }
+
+    /// Design-review aid: after a few seconds, "plug in" a USB stick and "unplug" a keyboard.
+    pub fn demo_hotplug(&mut self, cx: &mut Context<Self>) {
+        cx.spawn(async move |this: WeakEntity<Self>, cx| {
+            cx.background_executor().timer(Duration::from_secs(3)).await;
+            this.update(cx, |this, cx| {
+                if let Source::Fixture(inv) = &mut this.source {
+                    inv.components.push(facet_core::fixtures::usb_stick());
+                    inv.components.retain(|c| c.id != "usb:3-1.3");
+                }
+                this.start_load(cx);
+            })
+            .ok();
+        })
+        .detach();
     }
 
     fn schedule_clear_new(&self, cx: &mut Context<Self>) {

@@ -12,9 +12,16 @@ use gpui::{App, AppContext, Bounds, TitlebarOptions, WindowBackgroundAppearance,
 
 use app::{Facet, Page, Source, ThemePref};
 
-static START: std::sync::OnceLock<std::time::Instant> = std::sync::OnceLock::new();
+pub static START: std::sync::OnceLock<std::time::Instant> = std::sync::OnceLock::new();
 
-const USAGE: &str = "usage: facet-app [--fixture laptop|desktop|vm|loading|error] [--page <overview|category:storage|component:<id>|connections|preferences>] [--theme system|light|dark] [--size WxH] [--overlay search|export] [--query <text>]";
+/// Print a startup milestone when `FACET_TIMING` is set (used to measure the usable-window gate).
+pub fn timing(label: &str) {
+    if let (Some(_), Some(t)) = (std::env::var_os("FACET_TIMING"), START.get()) {
+        eprintln!("{label} {}", t.elapsed().as_millis());
+    }
+}
+
+const USAGE: &str = "usage: facet-app [--fixture laptop|desktop|vm|loading|error] [--page <overview|category:storage|component:<id>|connections|preferences>] [--theme system|light|dark] [--size WxH] [--overlay search|export] [--live] [--demo-hotplug] [--query <text>]";
 
 struct Args {
     source: Source,
@@ -23,10 +30,12 @@ struct Args {
     size: Option<(f32, f32)>,
     overlay: Option<String>,
     query: Option<String>,
+    demo_hotplug: bool,
+    live: bool,
 }
 
 fn parse_args() -> Result<Args, String> {
-    let mut args = Args { source: Source::Live, page: None, theme: None, size: None, overlay: None, query: None };
+    let mut args = Args { source: Source::Live, page: None, theme: None, size: None, overlay: None, query: None, demo_hotplug: false, live: false };
     let mut it = std::env::args().skip(1);
     while let Some(a) = it.next() {
         let mut value = |name: &str| it.next().ok_or_else(|| format!("{name} needs a value"));
@@ -57,6 +66,8 @@ fn parse_args() -> Result<Args, String> {
                 args.size = Some((w.parse().map_err(|_| "bad width")?, h.parse().map_err(|_| "bad height")?));
             }
             "--overlay" => args.overlay = Some(value("--overlay")?),
+            "--demo-hotplug" => args.demo_hotplug = true,
+            "--live" => args.live = true,
             "--query" => args.query = Some(value("--query")?),
             "--help" | "-h" => return Err(String::new()),
             other => return Err(format!("unknown option {other:?}")),
@@ -90,7 +101,7 @@ fn main() {
 
         let (w, h) = args.size.unwrap_or((1240., 800.));
         let bounds = Bounds::centered(None, size(px(w), px(h)), cx);
-        let Args { source, page, theme, overlay, query, .. } = args;
+        let Args { source, page, theme, overlay, query, demo_hotplug, live, .. } = args;
         cx.open_window(
             WindowOptions {
                 window_bounds: Some(WindowBounds::Windowed(bounds)),
@@ -101,14 +112,20 @@ fn main() {
                 ..Default::default()
             },
             move |window, cx| {
-                if let (Some(_), Some(t)) = (std::env::var_os("FACET_TIMING"), START.get()) {
-                    eprintln!("window-created-ms {}", t.elapsed().as_millis());
-                }
+                timing("window-created-ms");
                 let view = cx.new(|cx| Facet::new(source, page, theme, window, cx));
-                view.update(cx, |this, cx| match overlay.as_deref() {
+                view.update(cx, |this, cx| {
+                    if demo_hotplug {
+                        this.demo_hotplug(cx);
+                    }
+                    if live {
+                        this.set_live(true, cx);
+                    }
+                    match overlay.as_deref() {
                     Some("search") => this.open_search_with(query.as_deref().unwrap_or(""), window, cx),
                     Some("export") => this.open_export(&app::OpenExport, window, cx),
                     _ => {}
+                    }
                 });
                 view
             },

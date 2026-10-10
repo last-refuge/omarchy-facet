@@ -18,3 +18,4 @@ unicode-segmentation = "1.13.3"
 anyhow = "1.0.104"
 serde_json.workspace = true
 serde = { workspace = true, features = ["derive"] }
+futures = "0.3.34"

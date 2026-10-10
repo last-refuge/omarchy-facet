@@ -49,11 +49,11 @@ impl Colors {
             nav_muted: c(0xA3ACA7),
             text: c(0x252726),
             muted: c(0x5A5F5C),
-            faint: c(0x6F746F),
+            faint: c(0x636864),
             hairline: c(0xDDD8CC),
             hairline_strong: c(0xC6C0B0),
             hover: c(0xEBE7DD),
-            accent: c(0xD84B33),
+            accent: c(0xD1452D),
             accent_text: c(0xB23A25),
             on_accent: c(0xFFFFFF),
             sage: c(0x78917C),
@@ -77,7 +77,7 @@ impl Colors {
             hover: c(0x262C29),
             accent: c(0xE0563D),
             accent_text: c(0xF0836E),
-            on_accent: c(0x1A1E1C),
+            on_accent: c(0x101312),
             sage: c(0x8DA891),
             scrim: gpui::hsla(0.0, 0.0, 0.0, 0.55),
         }
@@ -108,5 +108,52 @@ pub trait ThemeExt {
 impl ThemeExt for App {
     fn theme(&self) -> &Theme {
         self.global::<Theme>()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// WCAG 2.x relative luminance of an sRGB colour given as `Hsla`.
+    fn luminance(c: Hsla) -> f32 {
+        let rgb = c.to_rgb();
+        let lin = |v: f32| if v <= 0.03928 { v / 12.92 } else { ((v + 0.055) / 1.055).powf(2.4) };
+        0.2126 * lin(rgb.r) + 0.7152 * lin(rgb.g) + 0.0722 * lin(rgb.b)
+    }
+
+    fn contrast(a: Hsla, b: Hsla) -> f32 {
+        let (la, lb) = (luminance(a), luminance(b));
+        let (hi, lo) = if la > lb { (la, lb) } else { (lb, la) };
+        (hi + 0.05) / (lo + 0.05)
+    }
+
+    #[test]
+    fn text_pairs_meet_wcag_aa() {
+        for (name, c) in [("light", Colors::light()), ("dark", Colors::dark())] {
+            let pairs = [
+                ("text on surface", c.text, c.surface, 4.5),
+                ("muted on surface", c.muted, c.surface, 4.5),
+                ("faint on surface", c.faint, c.surface, 4.5),
+                ("accent_text on surface", c.accent_text, c.surface, 4.5),
+                ("text on raised", c.text, c.raised, 4.5),
+                ("muted on raised", c.muted, c.raised, 4.5),
+                ("muted on hover", c.muted, c.hover, 4.5),
+                ("text on hover", c.text, c.hover, 4.5),
+                ("on_accent on accent (buttons)", c.on_accent, c.accent, 4.5),
+                ("nav_text on nav", c.nav_text, c.nav, 4.5),
+                ("nav_muted on nav", c.nav_muted, c.nav, 4.5),
+                ("nav_text on nav_active", c.nav_text, c.nav_active, 4.5),
+                ("nav_muted on nav_active", c.nav_muted, c.nav_active, 4.5),
+                // Non-text: focus ring and hairlines that carry meaning need 3:1.
+                ("accent on surface (focus ring, large text)", c.accent, c.surface, 3.0),
+                ("accent on nav (nav icon)", c.accent, c.nav, 3.0),
+                ("hairline_strong on surface (control borders)", c.hairline_strong, c.surface, 1.4),
+            ];
+            for (what, fg, bg, min) in pairs {
+                let r = contrast(fg, bg);
+                assert!(r >= min, "{name}: {what} is {r:.2}:1, needs {min}:1");
+            }
+        }
     }
 }

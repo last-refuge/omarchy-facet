@@ -6,6 +6,7 @@
 
 pub mod displays;
 pub mod graphics;
+pub mod hotplug;
 pub mod memory;
 pub mod network;
 pub mod peripherals;

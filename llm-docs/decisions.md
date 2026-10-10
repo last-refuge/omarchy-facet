@@ -41,3 +41,8 @@ Format: decision, alternatives, why, date. Newest last.
 - **Decision:** at the end of the v1.0.0 run, commit and push the branch to `https://github.com/last-refuge/omarchy-facet.git` (the only remote authorised). Tags stay local unless the user asks.
 - **Why:** explicit user instruction mid-run; it overrides the earlier "no pushing" rule for this one destination only.
 - **Pre-push audit (required):** grep the tree for real identifiers captured during development (drive serials, MAC/Bluetooth addresses, UUIDs, hostnames, usernames) and replace them with obviously fictional values before pushing.
+
+## 2026-10-10 — Vermilion deepened to #D1452D (light) for AA button text
+- **Decision:** light accent fill is `#D1452D` (brand concept `#D84B33`), dark `on_accent` is `#101312`; light "faint" text is `#636864`.
+- **Alternatives:** keep `#D84B33` and use large/bold-only text on it; dark text on vermilion.
+- **Why:** numeric WCAG check (unit test `theme::tests::text_pairs_meet_wcag_aa`): white on `#D84B33` is 4.22:1, below AA for 13 px semibold button labels; `#D1452D` gives 4.57:1 and still reads as the brand vermilion. Faint text on ivory was 4.23:1; now 5.04:1.

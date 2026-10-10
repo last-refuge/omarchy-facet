@@ -216,6 +216,11 @@ pub fn vm() -> Inventory {
     }
 }
 
+/// A USB flash drive, used by the hotplug demo.
+pub fn usb_stick() -> Component {
+    usb("usb:3-1.5", "SanDisk Ultra Flair", "USB flash drive", Some("usb:3-1"), Value::Bps(5_000_000_000))
+}
+
 pub fn by_name(name: &str) -> Option<Inventory> {
     match name {
         "laptop" => Some(laptop()),

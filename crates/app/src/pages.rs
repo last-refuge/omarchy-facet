@@ -9,7 +9,7 @@ use gpui::{
 
 use crate::app::{Facet, Load, Page, ThemePref};
 use crate::theme::{MONO_FONT, Mode, ThemeExt};
-use crate::widgets::{absence_reason, category_icon, component_icon, eyebrow, icon, mono, pluralize};
+use crate::widgets::{absence_reason, category_icon, component_icon, eyebrow, icon, mono, pluralize, sparkline};
 
 /// Short human phrase for a summary spec, or `None` when it adds nothing ("No").
 fn fact(s: &Spec, first: bool) -> Option<String> {
@@ -90,9 +90,18 @@ impl Facet {
             .child(div().text_size(px(16.)).text_color(t.colors.muted).child(sub.into()))
     }
 
-    fn section(&self, title: &str, cx: &Context<Self>) -> Div {
+    fn section(&self, title: &str, cx: &Context<Self>) -> gpui::Stateful<Div> {
         let t = cx.theme();
-        div().mt(px(34.)).mb(px(8.)).pb(px(8.)).border_b_1().border_color(t.colors.hairline_strong).child(eyebrow(title.to_owned(), t))
+        div()
+            .id(SharedString::from(format!("section-{title}")))
+            .role(Role::Heading)
+            .aria_label(title.to_owned())
+            .mt(px(34.))
+            .mb(px(8.))
+            .pb(px(8.))
+            .border_b_1()
+            .border_color(t.colors.hairline_strong)
+            .child(eyebrow(title.to_owned(), t))
     }
 
     fn skeleton_rows(&self, n: usize, cx: &Context<Self>) -> gpui::Stateful<Div> {
@@ -433,7 +442,11 @@ impl Facet {
         let t = cx.theme().clone();
         let (text, absent) = self.spec_text(s);
         let copy = text.clone();
-        let name = format!("{}: {}", s.label, text);
+        let trend = self.history_for(owner, &s.label).map(|h| {
+            let (lo, hi) = h.iter().fold((f64::MAX, f64::MIN), |(l, x), v| (l.min(*v), x.max(*v)));
+            (h.clone(), format!(". Trend over the last {} readings: {:.0} to {:.0}", h.len(), lo, hi))
+        });
+        let name = format!("{}: {}{}", s.label, text, trend.as_ref().map(|t| t.1.as_str()).unwrap_or(""));
         let gid = SharedString::from(format!("grp-{owner}-{}", s.label));
         div()
             .id(SharedString::from(format!("spec-{owner}-{}", s.label)))
@@ -454,11 +467,12 @@ impl Facet {
             })
             .child(
                 div()
-                    .w(px(188.))
+                    .w(px(if self.narrow { 140. } else { 270. }))
                     .flex_none()
                     .flex()
+                    .flex_wrap()
                     .items_center()
-                    .gap(px(7.))
+                    .gap_x(px(7.))
                     .text_color(t.colors.muted)
                     .child(s.label.clone())
                     .when(s.live, |d| d.child(div().size(px(6.)).rounded_full().bg(t.colors.sage)))
@@ -481,6 +495,7 @@ impl Facet {
                         d.child(mono(format!("{}{}", s.value.source, absence_reason(s).map(|r| format!("  ·  {r}")).unwrap_or_default())).text_color(t.colors.faint).text_size(px(11.5)))
                     }),
             )
+            .when_some(trend, |d, (h, _)| d.child(sparkline(&h, t.colors.sage)))
             .child(div().flex_none().invisible().group_hover(gid, |s| s.visible()).when(absent, |d| d.hidden()).child(icon("copy", 14., t.colors.faint)))
             .into_any_element()
     }
@@ -682,6 +697,12 @@ impl Facet {
             );
         }
         let dark = t.mode == Mode::Dark;
+        let live = self.live;
+        let hotplug_line = match &self.hotplug {
+            crate::app::Hotplug::Active => "Hotplug detection is on: plugging or unplugging hardware updates this window automatically.".to_owned(),
+            crate::app::Hotplug::Off => "Hotplug detection is off for this demo data.".to_owned(),
+            crate::app::Hotplug::Unavailable(why) => format!("Hotplug detection isn't available here ({why}). Press Ctrl R to re-read the hardware."),
+        };
         let shortcut = |keys: &str, what: &str| {
             div().flex().items_center().gap(px(16.)).py(px(8.)).border_b_1().border_color(t.colors.hairline).child(div().w(px(140.)).child(mono(keys.to_owned()))).child(div().text_color(t.colors.muted).child(what.to_owned()))
         };
@@ -691,6 +712,45 @@ impl Facet {
             .child(self.heading("Preferences", "Facet only reads. It never changes your hardware.", cx))
             .child(self.section("Appearance", cx))
             .child(div().py(px(10.)).flex().flex_col().gap(px(8.)).child(seg).child(div().text_size(px(13.)).text_color(t.colors.muted).child(if dark { "Currently showing the dark variant." } else { "Currently showing the light variant." })))
+            .child(self.section("Live updates", cx))
+            .child(
+                div()
+                    .py(px(10.))
+                    .flex()
+                    .flex_col()
+                    .gap(px(10.))
+                    .child(
+                        div()
+                            .id("live-toggle")
+                            .role(Role::CheckBox)
+                            .aria_label("Live monitoring")
+                            .tab_index(0)
+                            .self_start()
+                            .flex()
+                            .items_center()
+                            .gap(px(9.))
+                            .cursor_pointer()
+                            .rounded(px(5.))
+                            .border_1()
+                            .border_color(transparent_black())
+                            .focus_visible(|s| s.border_color(t.colors.accent))
+                            .on_click(cx.listener(|this, _: &ClickEvent, _, cx| this.set_live(!this.live, cx)))
+                            .child(
+                                div()
+                                    .size(px(18.))
+                                    .flex()
+                                    .items_center()
+                                    .justify_center()
+                                    .rounded(px(4.))
+                                    .border_1()
+                                    .border_color(if live { t.colors.accent } else { t.colors.hairline_strong })
+                                    .when(live, |d| d.bg(t.colors.accent).child(icon("check", 13., t.colors.on_accent))),
+                            )
+                            .child(div().font_weight(FontWeight::SEMIBOLD).child("Live monitoring")),
+                    )
+                    .child(div().max_w(px(640.)).text_size(px(13.)).text_color(t.colors.muted).child("Re-reads the hardware every two seconds and keeps the last three minutes of readings as small trend charts. Off by default so Facet stays idle when you are not looking."))
+                    .child(div().text_size(px(13.)).text_color(t.colors.muted).child(hotplug_line)),
+            )
             .child(self.section("Keyboard", cx))
             .child(
                 div()
@@ -702,6 +762,7 @@ impl Facet {
                     .child(shortcut("Alt ←", "Go back"))
                     .child(shortcut("Ctrl Shift S", "Show or hide data sources"))
                     .child(shortcut("Ctrl Shift I", "Show or hide serial numbers and addresses"))
+                    .child(shortcut("Ctrl Shift M", "Turn live monitoring on or off"))
                     .child(shortcut("Ctrl Shift L", "Toggle light and dark"))
                     .child(shortcut("Tab", "Move between controls")),
             )

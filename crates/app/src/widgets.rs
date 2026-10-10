@@ -97,6 +97,19 @@ pub fn absence_reason(s: &Spec) -> Option<String> {
     }
 }
 
+/// Tiny bar trend of recent samples, scaled to its own min..max. Purely decorative: the row's
+/// accessible name carries the numbers.
+pub fn sparkline(values: &std::collections::VecDeque<f64>, color: Hsla) -> Div {
+    let (min, max) = values.iter().fold((f64::MAX, f64::MIN), |(lo, hi), v| (lo.min(*v), hi.max(*v)));
+    let span = max - min;
+    let mut bars = div().flex().flex_none().items_end().gap(px(1.)).h(px(20.)).w(px(values.len() as f32 * 3.));
+    for v in values {
+        let frac = if span < 1e-9 { 0.5 } else { ((*v - min) / span) as f32 };
+        bars = bars.child(div().w(px(2.)).h(px(3. + 17. * frac)).rounded(px(1.)).bg(color));
+    }
+    bars
+}
+
 pub fn pluralize(n: usize, one: &str, many: &str) -> String {
     format!("{n} {}", if n == 1 { one } else { many })
 }

@@ -12,8 +12,11 @@ use crate::widgets::{category_icon, icon, pluralize};
 
 pub const NARROW_BELOW: f32 = 880.0;
 
+static FIRST_FRAME: std::sync::Once = std::sync::Once::new();
+
 impl Render for Facet {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        FIRST_FRAME.call_once(|| crate::timing("first-render-ms"));
         let t = cx.theme().clone();
         let narrow = f32::from(window.viewport_size().width) < NARROW_BELOW;
         self.narrow = narrow;
@@ -31,6 +34,7 @@ impl Render for Facet {
             .on_action(cx.listener(Self::toggle_theme))
             .on_action(cx.listener(Self::toggle_sources))
             .on_action(cx.listener(Self::toggle_identifiers))
+            .on_action(cx.listener(Self::toggle_live))
             .size_full()
             .flex()
             .bg(t.colors.surface)
@@ -327,6 +331,21 @@ impl Facet {
                     .gap(px(10.))
                     .flex_none()
                     .when(busy, |d| d.child(div().text_size(px(12.)).text_color(t.colors.faint).child("Reading hardware…")))
+                    .when(self.live && !busy, |d| {
+                        d.child(
+                            div()
+                                .id("live-chip")
+                                .role(Role::Status)
+                                .aria_label("Live monitoring is on")
+                                .flex()
+                                .items_center()
+                                .gap(px(6.))
+                                .text_size(px(12.))
+                                .text_color(t.colors.muted)
+                                .child(div().size(px(7.)).rounded_full().bg(t.colors.sage))
+                                .when(!narrow, |d| d.child("Live")),
+                        )
+                    })
                     .child(search)
                     .child(export),
             )
