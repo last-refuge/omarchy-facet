@@ -177,6 +177,7 @@ pub struct Facet {
     epoch: u64,
     /// Set each frame from the window width; row builders adapt to it.
     pub narrow: bool,
+    pub viewport_w: f32,
 }
 
 impl Facet {
@@ -215,6 +216,7 @@ impl Facet {
             source,
             epoch: 0,
             narrow: false,
+            viewport_w: 1240.0,
         };
         this.apply_theme(window.appearance(), cx);
         cx.observe_window_appearance(window, |this, window, cx| {
@@ -618,7 +620,7 @@ impl Facet {
     pub fn open_search(&mut self, _: &OpenSearch, window: &mut Window, cx: &mut Context<Self>) {
         self.export = None;
         let accent = cx.global::<Theme>().colors.accent_text;
-        let input = cx.new(|cx| TextInput::new("Search hardware, models, properties…", accent, cx));
+        let input = cx.new(|cx| TextInput::new("Find a device or specification…", accent, cx));
         let sub = cx.subscribe(&input, |this, input, _: &Changed, cx| {
             let q = input.read(cx).text().to_owned();
             this.update_results(&q);

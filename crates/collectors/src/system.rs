@@ -16,6 +16,26 @@ fn dmi(root: &Path, name: &str) -> Field<String> {
     read_field(root, &format!("{DMI}/{name}"))
 }
 
+/// The maker's everyday name from a DMI manufacturer string: "LENOVO" -> "Lenovo", "Dell Inc." -> "Dell",
+/// "ASUSTeK COMPUTER INC." -> "ASUS". Only the first word is used.
+fn friendly_maker(raw: &str) -> String {
+    let word: String = raw.split_whitespace().next().unwrap_or("").trim_matches(|c: char| !c.is_alphanumeric()).to_owned();
+    if word.eq_ignore_ascii_case("asustek") {
+        return "ASUS".into();
+    }
+    if word.len() > 4 && word.chars().all(|c| c.is_uppercase() || !c.is_alphabetic()) {
+        let mut cs = word.chars();
+        return cs.next().map(|f| f.to_string() + &cs.as_str().to_lowercase()).unwrap_or(word);
+    }
+    word
+}
+
+/// "Legion 5 15IRX10" -> "Lenovo Legion 5 15IRX10", unless the name already starts with the maker.
+fn with_maker(maker: &str, model: &str) -> String {
+    let m = friendly_maker(maker);
+    if m.is_empty() || model.to_lowercase().contains(&m.to_lowercase()) { model.to_owned() } else { format!("{m} {model}") }
+}
+
 /// Firmware vendors fill unset DMI strings with placeholders instead of leaving them empty.
 fn meaningful(s: &str) -> bool {
     let l = s.trim().to_lowercase();
@@ -141,13 +161,13 @@ pub fn collect_from(root: &Path) -> Vec<Component> {
         return Vec::new();
     }
 
-    let title = [&family, &product_version, &product_name]
-        .iter()
-        .filter_map(|f| f.value())
-        .find(|s| meaningful(s))
-        .cloned()
-        .unwrap_or_else(|| "This computer".to_owned());
+    let model_name = [&family, &product_version, &product_name].iter().filter_map(|f| f.value()).find(|s| meaningful(s)).cloned();
     let maker = manufacturer.value().filter(|s| meaningful(s)).cloned();
+    let title = match (&maker, model_name) {
+        (Some(m), Some(name)) => with_maker(m, &name),
+        (None, Some(name)) => name,
+        _ => "This computer".to_owned(),
+    };
     let model = product_name.value().filter(|s| meaningful(s)).cloned();
     let subtitle = match (&maker, &model) {
         (Some(a), Some(b)) => Some(format!("{a} {b}")),
@@ -240,7 +260,7 @@ mod tests {
         let c = &v[0];
         assert_eq!(c.id, "system:machine");
         assert_eq!(c.category, Category::System);
-        assert_eq!(c.title, "Legion 5 15IRX10");
+        assert_eq!(c.title, "Lenovo Legion 5 15IRX10");
         assert_eq!(c.subtitle.as_deref(), Some("LENOVO 83LY"));
         assert_eq!(spec(c, "Chassis").display(), "Notebook");
         assert_eq!(spec(c, "Firmware mode").display(), "UEFI");
@@ -282,7 +302,7 @@ mod tests {
         let c = &collect_from(fx.path())[0];
         assert_eq!(spec(c, "Chassis").display(), "Desktop");
         assert_eq!(spec(c, "Firmware mode").display(), "BIOS (legacy)");
-        assert_eq!(c.title, "OptiPlex 7010");
+        assert_eq!(c.title, "Dell OptiPlex 7010");
         assert_eq!(chassis_name(0x80 | 9), Some("Laptop"));
         assert_eq!(chassis_name(31), Some("Convertible"));
         assert_eq!(chassis_name(0), None);
@@ -343,5 +363,15 @@ mod tests {
                 println!("  {:<40} {}  <{}>{}{}", s.label, s.display(), s.value.source, if s.live { " live" } else { "" }, if s.rated { " rated" } else { "" });
             }
         }
+    }
+
+    #[test]
+    fn maker_names_are_friendly_and_not_duplicated() {
+        assert_eq!(with_maker("LENOVO", "Legion 5"), "Lenovo Legion 5");
+        assert_eq!(with_maker("Dell Inc.", "OptiPlex 7010"), "Dell OptiPlex 7010");
+        assert_eq!(with_maker("ASUSTeK COMPUTER INC.", "ROG STRIX B650E-F"), "ASUS ROG STRIX B650E-F");
+        assert_eq!(with_maker("HP", "EliteBook 840"), "HP EliteBook 840");
+        assert_eq!(with_maker("Apple Inc.", "Apple Silicon Mac"), "Apple Silicon Mac", "not repeated");
+        assert_eq!(with_maker("", "Thing"), "Thing");
     }
 }

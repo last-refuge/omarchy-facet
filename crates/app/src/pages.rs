@@ -1,7 +1,7 @@
 //! Page bodies: overview, category lists, component detail, connections, preferences, and the
 //! loading / error states.
 
-use facet_core::{Category, Component, Spec, Value};
+use facet_core::{Category, Component, Inventory, Spec, Value};
 use gpui::{
     AnyElement, Context, Div, FontWeight, InteractiveElement, IntoElement, ParentElement, Role,
     SharedString, StatefulInteractiveElement, Styled, Window, div, prelude::*, px, transparent_black,
@@ -9,9 +9,12 @@ use gpui::{
 
 use crate::app::{Facet, Load, Page, ThemePref};
 use crate::theme::{MONO_FONT, Mode, ThemeExt};
-use crate::widgets::{Activate, absence_reason, category_icon, component_icon, eyebrow, icon, mono, pluralize, sparkline};
+use crate::widgets::{Activate, absence_reason, category_icon, component_icon, eyebrow, icon, line_chart, mono, pluralize, sparkline};
 
 /// Short human phrase for a summary spec, or `None` when it adds nothing ("No").
+/// Widest the page content grows. The overview's two-column maths uses the same number.
+const CONTENT_MAX: f32 = 1180.0;
+
 fn fact(s: &Spec, first: bool) -> Option<String> {
     let text = s.display();
     // Drop explanatory parentheses ("Integrated (on the root bus; heuristic)" -> "Integrated").
@@ -62,7 +65,7 @@ impl Facet {
             .size_full()
             .overflow_y_scroll()
             .track_scroll(&scroll)
-            .child(div().w_full().max_w(px(1040.)).mx_auto().px(px(pad)).pt(px(if narrow { 20. } else { 34. })).pb(px(56.)).child(body))
+            .child(div().w_full().max_w(px(CONTENT_MAX)).mx_auto().px(px(pad)).pt(px(if narrow { 20. } else { 34. })).pb(px(56.)).child(body))
             .into_any_element()
     }
 
@@ -261,114 +264,433 @@ impl Facet {
             .into_any_element()
     }
 
+    /// One row of the "This machine" table: small-caps label, the component, and its key facts beneath.
+    fn table_row(&self, label: &str, c: &Component, cx: &mut Context<Self>) -> AnyElement {
+        let t = cx.theme().clone();
+        let id = c.id.clone();
+        let is_new = self.new_ids.contains(&c.id);
+        div()
+            .id(SharedString::from(format!("machine-{}", c.id)))
+            .role(Role::Link)
+            .aria_label(format!("{label}: {}. {}", c.title, facts(c, 3)))
+            .tab_index(0)
+            .relative()
+            .flex()
+            .gap(px(22.))
+            .py(px(10.))
+            .px(px(2.))
+            .border_b_1()
+            .border_color(t.colors.hairline)
+            .cursor_pointer()
+            .hover(|s| s.bg(t.colors.hover))
+            .focus_visible(|s| s.border_color(t.colors.accent).bg(t.colors.hover))
+            .on_activate(cx, move |this, window, cx| this.go(Page::Component(id.clone()), window, cx))
+            .when(is_new, |d| d.child(div().absolute().left_0().top(px(8.)).bottom(px(8.)).w(px(3.)).rounded(px(2.)).bg(t.colors.accent)))
+            .child(div().w(px(104.)).flex_none().pt(px(4.)).child(eyebrow(label.to_owned(), &t)))
+            .child(
+                div()
+                    .flex_1()
+                    .min_w_0()
+                    .flex()
+                    .flex_col()
+                    .gap(px(1.))
+                    .child(div().text_size(px(17.)).font_weight(FontWeight::SEMIBOLD).child(c.title.clone()))
+                    .child(div().text_size(px(13.)).text_color(t.colors.muted).child(facts(c, 3).replace("  ·  ", "  /  "))),
+            )
+            .into_any_element()
+    }
+
+    /// Several drives collapse into one row ("3 drives, 7.0 TB") that opens the Storage page, so a
+    /// machine with many disks doesn't push the live readings off the screen.
+    fn storage_summary_row(&self, drives: &[&Component], cx: &mut Context<Self>) -> AnyElement {
+        let t = cx.theme().clone();
+        let total: u64 = drives
+            .iter()
+            .filter_map(|c| c.all_specs().find(|s| s.label == "Capacity").and_then(|s| match s.value.value() {
+                Some(Value::Bytes(b)) => Some(*b),
+                _ => None,
+            }))
+            .sum();
+        let names = drives.iter().map(|c| c.title.as_str()).collect::<Vec<_>>().join(", ");
+        div()
+            .id("machine-storage-all")
+            .role(Role::Link)
+            .aria_label(format!("Storage: {} drives, {}. {names}", drives.len(), facet_core::format_bytes(total)))
+            .tab_index(0)
+            .flex()
+            .gap(px(22.))
+            .py(px(10.))
+            .px(px(2.))
+            .border_b_1()
+            .border_color(t.colors.hairline)
+            .cursor_pointer()
+            .hover(|s| s.bg(t.colors.hover))
+            .focus_visible(|s| s.border_color(t.colors.accent).bg(t.colors.hover))
+            .on_activate(cx, |this, window, cx| this.go(Page::Category(Category::Storage), window, cx))
+            .child(div().w(px(104.)).flex_none().pt(px(4.)).child(eyebrow("Storage", &t)))
+            .child(
+                div()
+                    .flex_1()
+                    .min_w_0()
+                    .flex()
+                    .flex_col()
+                    .gap(px(1.))
+                    .child(div().text_size(px(17.)).font_weight(FontWeight::SEMIBOLD).child(format!("{} drives, {} in total", drives.len(), facet_core::format_bytes(total))))
+                    .child(div().truncate().text_size(px(13.)).text_color(t.colors.muted).child(names)),
+            )
+            .into_any_element()
+    }
+
+    /// The exploded-machine drawing with callouts for the parts this machine has. Callout labels are
+    /// drawn only when there is room; the drawing alone is always a way into the connections view.
+    fn illustration(&self, inv: &Inventory, w: f32, labels: bool, cx: &mut Context<Self>) -> AnyElement {
+        let t = cx.theme().clone();
+        let h = w * 430.0 / 640.0;
+        let mut art = div().relative().w(px(w)).h(px(h)).child(gpui::svg().path("brand/machine.svg").w(px(w)).h(px(h)).text_color(t.colors.muted.opacity(0.85)));
+        if labels {
+            let dimms: Vec<&Component> = inv.components.iter().filter(|c| c.id.starts_with("memory:dimm")).collect();
+            let memory_sub = dimms.first().and_then(|d| d.all_specs().find(|s| s.label == "Size")).map(|s| format!("{} × {}", dimms.len(), s.display()));
+            let has_nvme = inv.in_category(Category::Storage).any(|c| c.all_specs().any(|s| s.label == "Interface" && s.display() == "NVMe"));
+            // (label, sub-label, anchor x, anchor y, label on the left?)  Anchors come from scripts/gen-illustration.py.
+            let callouts: [(&str, Option<String>, f32, f32, bool); 4] = [
+                ("CPU", None, 0.479, 0.109, true),
+                ("Memory", memory_sub, 0.752, 0.368, false),
+                ("Graphics", None, 0.458, 0.834, false),
+                (if has_nvme { "M.2 SSD" } else { "Storage" }, None, 0.257, 0.375, true),
+            ];
+            for (label, sub, ax, ay, left) in callouts {
+                let (x, y) = (ax * w, ay * h);
+                let (line_from, line_to) = if left { (0.15 * w, x) } else { (x, 0.80 * w) };
+                art = art
+                    .child(div().absolute().left(px(line_from.min(line_to))).top(px(y)).w(px((line_to - line_from).abs())).h(px(1.)).bg(t.colors.accent.opacity(0.55)))
+                    .child(div().absolute().left(px(x - 3.5)).top(px(y - 3.5)).size(px(7.)).rounded_full().bg(t.colors.accent))
+                    .child(
+                        div()
+                            .absolute()
+                            .top(px(y - 9.))
+                            .when(left, |d| d.left_0().w(px(0.14 * w)).items_end().text_right())
+                            .when(!left, |d| d.left(px(0.81 * w)).w(px(0.19 * w)))
+                            .flex()
+                            .flex_col()
+                            .text_size(px(12.))
+                            .text_color(t.colors.muted)
+                            .child(label.to_owned())
+                            .when_some(sub, |d, s| d.child(div().text_size(px(11.)).text_color(t.colors.faint).child(s))),
+                    );
+            }
+        }
+        div()
+            .id("explore-machine")
+            .role(Role::Button)
+            .aria_label("Explore how this machine is connected")
+            .tab_index(0)
+            .rounded(px(10.))
+            .border_1()
+            .border_color(transparent_black())
+            .cursor_pointer()
+            .focus_visible(|s| s.border_color(t.colors.accent))
+            .on_activate(cx, |this, window, cx| this.go(Page::Connections, window, cx))
+            .child(art)
+            .into_any_element()
+    }
+
+    /// The full-width bar of live readings: CPU and GPU temperature with trend lines, memory with a bar.
+    fn live_strip(&mut self, inv: &Inventory, narrow: bool, cx: &mut Context<Self>) -> Option<AnyElement> {
+        let t = cx.theme().clone();
+        let wanted = ["cpu_temperature", "memory_in_use", "gpu_temperature"];
+        let readings: Vec<facet_core::Reading> = facet_core::headline_readings(inv).into_iter().filter(|r| wanted.contains(&r.id.as_str())).collect();
+        if readings.is_empty() {
+            return None;
+        }
+        let live = self.live;
+        let status = if live {
+            div().flex().items_center().gap(px(8.)).child(div().size(px(7.)).rounded_full().bg(t.colors.sage)).child(div().text_size(px(12.5)).text_color(t.colors.muted).child("Refreshing every 2 seconds"))
+        } else {
+            div().flex().items_center().gap(px(8.)).child(div().text_size(px(12.5)).text_color(t.colors.muted).child("Snapshot")).child(
+                div()
+                    .id("live-on")
+                    .role(Role::Button)
+                    .aria_label("Turn on live monitoring")
+                    .tab_index(0)
+                    .px(px(6.))
+                    .rounded(px(5.))
+                    .border_1()
+                    .border_color(transparent_black())
+                    .cursor_pointer()
+                    .text_size(px(12.5))
+                    .text_color(t.colors.accent_text)
+                    .font_weight(FontWeight::SEMIBOLD)
+                    .hover(|s| s.bg(t.colors.hover))
+                    .focus_visible(|s| s.border_color(t.colors.accent))
+                    .on_activate(cx, |this, _, cx| this.set_live(true, cx))
+                    .child("Turn on live monitoring"),
+            )
+        };
+
+        let mut strip = div().flex().when(narrow, |d| d.flex_col()).border_t_1().border_b_1().border_color(t.colors.hairline_strong);
+        let n = readings.len();
+        for (i, r) in readings.into_iter().enumerate() {
+            let history = r.source.as_ref().and_then(|(owner, label)| self.history_for(owner, label)).map(|h| h.iter().copied().collect::<Vec<f64>>());
+            let is_memory = r.id == "memory_in_use";
+            let (big, small) = match (is_memory, r.detail.split_once(" / ")) {
+                (true, Some((used, total))) => (used.to_owned(), format!(" / {total}")),
+                _ => (r.display.clone(), String::new()),
+            };
+            let chart_color = if r.id == "gpu_temperature" { t.colors.sage } else { t.colors.accent_text };
+            let mut value_row = div()
+                .flex()
+                .items_end()
+                .gap(px(14.))
+                .child(
+                    div()
+                        .flex()
+                        .items_baseline()
+                        .child(div().text_size(px(38.)).line_height(px(44.)).font_weight(FontWeight::SEMIBOLD).text_color(if r.available { t.colors.text } else { t.colors.faint }).child(big))
+                        .when(!small.is_empty(), |d| d.child(div().text_size(px(20.)).text_color(t.colors.muted).child(small))),
+                );
+            if is_memory {
+                let frac = (r.value.unwrap_or(0.0) / 100.0).clamp(0.0, 1.0) as f32;
+                value_row = value_row.child(
+                    div().mb(px(10.)).w(px(110.)).h(px(8.)).rounded_full().bg(t.colors.hairline).child(div().h_full().w(px(110. * frac)).rounded_full().bg(t.colors.text)),
+                );
+            } else if let Some(h) = history {
+                value_row = value_row.child(div().mb(px(6.)).child(line_chart(h, chart_color, 120., 34.)));
+            }
+            strip = strip.child(
+                div()
+                    .id(SharedString::from(format!("live-{}", r.id)))
+                    .role(Role::GenericContainer)
+                    .aria_label(format!("{}: {}. {}", r.label, r.display, r.note))
+                    .flex_1()
+                    .min_w_0()
+                    .px(px(22.))
+                    .py(px(16.))
+                    .flex()
+                    .flex_col()
+                    .gap(px(4.))
+                    .when(i == 0 && !narrow, |d| d.pl(px(2.)))
+                    .when(i > 0 && !narrow, |d| d.border_l_1().border_color(t.colors.hairline))
+                    .when(i > 0 && narrow, |d| d.border_t_1().border_color(t.colors.hairline))
+                    .child(div().text_size(px(15.)).text_color(t.colors.muted).child(r.label.clone()))
+                    .child(value_row)
+                    .when(!r.available, |d| d.child(div().text_size(px(12.5)).text_color(t.colors.muted).child(r.note.clone()))),
+            );
+            let _ = n;
+        }
+        Some(
+            div()
+                .mt(px(30.))
+                .child(div().flex().items_center().justify_between().mb(px(10.)).child(eyebrow("Live readings", &t)).child(status))
+                .child(strip)
+                .into_any_element(),
+        )
+    }
+
+    fn device_row(&self, c: &Component, cx: &mut Context<Self>) -> AnyElement {
+        let t = cx.theme().clone();
+        let id = c.id.clone();
+        let is_new = self.new_ids.contains(&c.id);
+        let sub = c.subtitle.clone().filter(|s| !s.is_empty()).unwrap_or_else(|| facts(c, 3));
+        div()
+            .id(SharedString::from(format!("device-{}", c.id)))
+            .role(Role::Link)
+            .aria_label(format!("{}. {}", c.title, sub))
+            .tab_index(0)
+            .relative()
+            .flex()
+            .items_center()
+            .gap(px(20.))
+            .py(px(14.))
+            .px(px(4.))
+            .border_b_1()
+            .border_color(t.colors.hairline)
+            .cursor_pointer()
+            .hover(|s| s.bg(t.colors.hover))
+            .focus_visible(|s| s.border_color(t.colors.accent).bg(t.colors.hover))
+            .on_activate(cx, move |this, window, cx| this.go(Page::Component(id.clone()), window, cx))
+            .when(is_new, |d| d.child(div().absolute().left_0().top(px(8.)).bottom(px(8.)).w(px(3.)).rounded(px(2.)).bg(t.colors.accent)))
+            .child(div().w(px(36.)).flex_none().flex().justify_center().child(icon(component_icon(c), 26., t.colors.text)))
+            .child(
+                div()
+                    .flex_1()
+                    .min_w_0()
+                    .flex()
+                    .flex_col()
+                    .gap(px(1.))
+                    .child(div().text_size(px(16.)).font_weight(FontWeight::SEMIBOLD).child(c.title.clone()))
+                    .child(div().text_size(px(13.)).text_color(t.colors.muted).child(sub)),
+            )
+            .child(icon("chevron-right", 16., t.colors.faint))
+            .into_any_element()
+    }
+
     fn overview(&mut self, narrow: bool, cx: &mut Context<Self>) -> AnyElement {
         let t = cx.theme().clone();
-        let mut page = div().flex().flex_col();
-        // Hero: the headline, and (in wide windows) the exploded-machine drawing, which doubles as the
-        // way into the connections view.
-        let hero = div()
-            .flex()
-            .items_start()
-            .justify_between()
-            .when(!narrow, |d| d.min_h(px(280.)))
-            .child(self.heading("A closer look.", "Every component. One clear picture.", cx))
-            .when(!narrow, |d| {
-                d.child(
-                    div()
-                        .id("explore-machine")
-                        .role(Role::Button)
-                        .aria_label("Explore how this machine is connected")
-                        .tab_index(0)
-                        .flex_none()
-                        .mt(px(-6.))
-                        .p(px(4.))
-                        .rounded(px(10.))
-                        .border_1()
-                        .border_color(transparent_black())
-                        .cursor_pointer()
-                        .hover(|s| s.bg(t.colors.hover))
-                        .focus_visible(|s| s.border_color(t.colors.accent))
-                        .on_activate(cx, |this, window, cx| this.go(Page::Connections, window, cx))
-                        .child(gpui::svg().path("brand/machine.svg").w(px(200.)).h(px(256.)).text_color(t.colors.muted.opacity(0.75))),
-                )
-            });
-        page = page.child(hero);
+        let inv = self.inv.clone();
+        // Room for the content: the window minus the sidebar and page padding.
+        let avail = (self.viewport_w - if narrow { 60. + 36. } else { 248. + 80. }).min(CONTENT_MAX - 80.);
+        let two_col = !narrow && avail >= 760.;
+        let labels = avail >= 960.;
+        let left_w = if avail >= 960. { 440. } else { 390. };
 
         if let Load::Failed(msg) = self.load.clone() {
-            return page.child(self.error_panel(&msg, cx)).into_any_element();
-        }
-        if let Some(n) = self.notice(cx) {
-            page = page.child(n);
+            return div().flex().flex_col().child(self.heading("A closer look.", "Every component. One clear picture.", cx)).child(self.error_panel(&msg, cx)).into_any_element();
         }
 
-        // This machine.
-        page = page.child(self.section("This machine", cx));
-        let mut rows = div().flex().flex_col();
+        // ---- left: headline, the machine, and its main parts
+        let mut left = div().flex().flex_col().when(two_col, |d| d.w(px(left_w)).flex_none()).when(!two_col, |d| d.w_full());
+        left = left.child(self.heading("A closer look.", "Every component. One clear picture.", cx));
+        if let Some(n) = self.notice(cx) {
+            left = left.child(n);
+        }
+        let connected = connected_devices(&inv);
+        if let Some(sys) = inv.in_category(Category::System).next() {
+            let kind = sys.subtitle.clone().unwrap_or_default();
+            let line = if kind.is_empty() { pluralize(connected.len(), "connected device", "connected devices") } else { format!("{kind} · {}", pluralize(connected.len(), "connected device", "connected devices")) };
+            left = left.child(
+                div()
+                    .id("machine-link")
+                    .role(Role::Heading)
+                    .aria_label(format!("{}, {line}", sys.title))
+                    .mt(px(6.))
+                    .mb(px(12.))
+                    .flex()
+                    .flex_col()
+                    .gap(px(2.))
+                    .child(div().text_size(px(22.)).line_height(px(28.)).font_weight(FontWeight::SEMIBOLD).child(sys.title.clone()))
+                    .child(div().text_size(px(14.)).text_color(t.colors.muted).child(line)),
+            );
+        }
+        let mut table = div().flex().flex_col().border_t_1().border_color(t.colors.hairline_strong);
         let mut any = false;
-        let inv = self.inv.clone();
         if let Some(c) = inv.in_category(Category::Processor).next() {
-            rows = rows.child(self.machine_row("Processor", c, cx));
+            table = table.child(self.table_row("Processor", c, cx));
             any = true;
         }
         if let Some(c) = inv.get("memory:system").or_else(|| inv.in_category(Category::Memory).next()) {
-            rows = rows.child(self.machine_row("Memory", c, cx));
+            table = table.child(self.table_row("Memory", c, cx));
             any = true;
         }
         for c in inv.in_category(Category::Graphics) {
-            rows = rows.child(self.machine_row("Graphics", c, cx));
+            table = table.child(self.table_row("Graphics", c, cx));
             any = true;
         }
-        for c in inv.in_category(Category::Storage) {
-            rows = rows.child(self.machine_row("Storage", c, cx));
-            any = true;
+        let drives: Vec<&Component> = inv.in_category(Category::Storage).collect();
+        match drives.len() {
+            0 => {}
+            1 => {
+                table = table.child(self.table_row("Storage", drives[0], cx));
+                any = true;
+            }
+            _ => {
+                table = table.child(self.storage_summary_row(&drives, cx));
+                any = true;
+            }
         }
         if !any {
-            rows = rows.child(if self.is_loading() {
+            table = table.child(if self.is_loading() {
                 self.skeleton_rows(4, cx).into_any_element()
             } else {
                 div().py(px(18.)).text_color(t.colors.muted).child("No hardware was reported.").into_any_element()
             });
         } else if self.is_loading() {
-            rows = rows.child(self.skeleton_rows(1, cx));
+            table = table.child(self.skeleton_rows(1, cx));
         }
-        page = page.child(rows);
+        left = left.child(table);
 
-        // Live now.
-        let readings = live_readings(&inv);
-        if !readings.is_empty() {
-            page = page.child(self.section("Live now", cx));
-            let mut strip = div().flex().gap(px(if narrow { 20. } else { 56. })).when(narrow, |d| d.flex_col()).py(px(8.));
-            for (label, value, note) in readings {
-                strip = strip.child(
-                    div()
-                        .flex()
-                        .flex_col()
-                        .gap(px(2.))
-                        .child(eyebrow(label.clone(), &t))
-                        .child(div().text_size(px(40.)).line_height(px(46.)).font_weight(FontWeight::SEMIBOLD).text_color(if value.starts_with('—') { t.colors.faint } else { t.colors.text }).child(value))
-                        .child(div().text_size(px(12.5)).text_color(t.colors.muted).child(note)),
-                );
-            }
+        // ---- right: the exploded machine
+        let age = match self.age_secs() {
+            Some(0..=4) | None => "Updated just now".to_owned(),
+            Some(n) if n < 90 => format!("Updated {n} s ago"),
+            Some(n) => format!("Updated {} min ago", n / 60),
+        };
+        let top = if two_col {
+            let right_w = (avail - left_w - 36.).max(260.);
+            let art_w = right_w.min(600.);
+            div().flex().items_start().gap(px(36.)).child(left).child(
+                div()
+                    .flex_1()
+                    .min_w_0()
+                    .flex()
+                    .flex_col()
+                    .items_end()
+                    .gap(px(6.))
+                    .child(div().text_size(px(12.)).text_color(t.colors.faint).child(age))
+                    .child(self.illustration(&inv, art_w, labels, cx))
+                    .child(
+                        div()
+                            .id("explore-link")
+                            .role(Role::Link)
+                            .aria_label("Explore device connections")
+                            .tab_index(0)
+                            .flex()
+                            .items_center()
+                            .gap(px(6.))
+                            .px(px(6.))
+                            .py(px(2.))
+                            .rounded(px(6.))
+                            .border_1()
+                            .border_color(transparent_black())
+                            .cursor_pointer()
+                            .text_size(px(13.))
+                            .text_color(t.colors.muted)
+                            .hover(|s| s.text_color(t.colors.accent_text))
+                            .focus_visible(|s| s.border_color(t.colors.accent))
+                            .on_activate(cx, |this, window, cx| this.go(Page::Connections, window, cx))
+                            .child("Explore device connections")
+                            .child(icon("arrow-right", 14., t.colors.muted)),
+                    ),
+            )
+        } else {
+            let art_w = avail.clamp(240., 520.);
+            div().flex().flex_col().gap(px(20.)).child(left).child(div().flex().justify_center().child(self.illustration(&inv, art_w, false, cx)))
+        };
+
+        let mut page = div().flex().flex_col().child(top);
+        if let Some(strip) = self.live_strip(&inv, narrow, cx) {
             page = page.child(strip);
         }
 
-        // Connected devices.
-        let connected: Vec<Component> = inv
-            .components
-            .iter()
-            .filter(|c| matches!(c.category, Category::Displays | Category::Peripherals | Category::Network) && !c.id.starts_with("pci:") && !c.id.starts_with("usb:usb"))
-            .take(7)
-            .cloned()
-            .collect();
+        // ---- connected devices
         if !connected.is_empty() {
-            page = page.child(self.section("Connected devices", cx));
-            let mut list = div().flex().flex_col();
-            for c in &connected {
-                list = list.child(self.machine_row(c.category.label(), c, cx));
-            }
-            page = page.child(list).child(
-                div().mt(px(14.)).child(self.button("see-connections", "Explore connections", false, cx, |this, window, cx| this.go(Page::Connections, window, cx))),
+            let total = connected.len();
+            page = page.child(
+                div()
+                    .mt(px(34.))
+                    .mb(px(4.))
+                    .flex()
+                    .items_baseline()
+                    .justify_between()
+                    .child(div().id("connected-title").role(Role::Heading).aria_label("Connected and ready").text_size(px(22.)).font_weight(FontWeight::SEMIBOLD).child("Connected & ready"))
+                    .child(
+                        div()
+                            .id("view-all")
+                            .role(Role::Link)
+                            .aria_label(format!("View all {total} connected devices"))
+                            .tab_index(0)
+                            .flex()
+                            .items_center()
+                            .gap(px(6.))
+                            .px(px(6.))
+                            .py(px(2.))
+                            .rounded(px(6.))
+                            .border_1()
+                            .border_color(transparent_black())
+                            .cursor_pointer()
+                            .text_size(px(13.))
+                            .text_color(t.colors.muted)
+                            .hover(|s| s.text_color(t.colors.accent_text))
+                            .focus_visible(|s| s.border_color(t.colors.accent))
+                            .on_activate(cx, |this, window, cx| this.go(Page::Connections, window, cx))
+                            .child(format!("View all {total}"))
+                            .child(icon("arrow-right", 14., t.colors.muted)),
+                    ),
             );
+            let mut list = div().flex().flex_col().border_t_1().border_color(t.colors.hairline_strong);
+            for c in connected.iter().take(4) {
+                list = list.child(self.device_row(c, cx));
+            }
+            page = page.child(list);
         }
         page.into_any_element()
     }
@@ -819,11 +1141,14 @@ impl Facet {
     }
 }
 
-/// The first three headline readings for the overview. Shared with the CLI and the bar widget.
-fn live_readings(inv: &facet_core::Inventory) -> Vec<(String, String, String)> {
-    facet_core::headline_readings(inv)
-        .into_iter()
-        .filter(|r| matches!(r.id.as_str(), "cpu_temperature" | "memory_in_use" | "gpu_temperature"))
-        .map(|r| (r.label, if r.available { r.display } else { "— °C".to_owned() }, r.note))
-        .collect()
+/// What is plugged into or paired with this machine: displays, USB devices (not the root hubs),
+/// Bluetooth adapters and cameras. Internal PCI parts and input nodes belong to the machine, not to it.
+fn connected_devices(inv: &Inventory) -> Vec<Component> {
+    let mut out: Vec<Component> = inv.in_category(Category::Displays).cloned().collect();
+    out.extend(
+        inv.in_category(Category::Peripherals)
+            .filter(|c| (c.id.starts_with("usb:") && !c.id.starts_with("usb:usb")) || c.id.starts_with("bluetooth:") || c.id.starts_with("camera:"))
+            .cloned(),
+    );
+    out
 }

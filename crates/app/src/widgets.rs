@@ -115,6 +115,35 @@ pub fn sparkline(values: &std::collections::VecDeque<f64>, color: Hsla) -> Div {
     bars
 }
 
+/// Smooth-enough trend line of recent samples, scaled to its own min..max with headroom.
+pub fn line_chart(values: Vec<f64>, color: Hsla, width: f32, height: f32) -> impl IntoElement {
+    gpui::canvas(
+        |_, _, _| (),
+        move |bounds, _, window, _| {
+            let n = values.len();
+            if n < 2 {
+                return;
+            }
+            let (lo, hi) = values.iter().fold((f64::MAX, f64::MIN), |(l, h), v| (l.min(*v), h.max(*v)));
+            // A floor on the scale keeps a 1-degree wobble from looking like a cliff.
+            let span = (hi - lo).max(5.0);
+            let mid = (hi + lo) / 2.0;
+            let mut path = gpui::PathBuilder::stroke(px(1.6));
+            for (i, v) in values.iter().enumerate() {
+                let x = bounds.origin.x + bounds.size.width * (i as f32 / (n - 1) as f32);
+                let t = (0.5 + (*v - mid) / span) as f32;
+                let y = bounds.origin.y + bounds.size.height * (1.0 - (0.1 + 0.8 * t.clamp(0.0, 1.0)));
+                if i == 0 { path.move_to(gpui::point(x, y)) } else { path.line_to(gpui::point(x, y)) }
+            }
+            if let Ok(p) = path.build() {
+                window.paint_path(p, color);
+            }
+        },
+    )
+    .w(px(width))
+    .h(px(height))
+}
+
 pub fn pluralize(n: usize, one: &str, many: &str) -> String {
     format!("{n} {}", if n == 1 { one } else { many })
 }

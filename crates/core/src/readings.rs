@@ -19,15 +19,26 @@ pub struct Reading {
     /// Plain-language context: the sensor, the status, or why the value is absent.
     pub note: String,
     pub available: bool,
+    /// Extra figure for the reading, e.g. memory as `7.5 / 31.1 GiB`. Empty when there is none.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub detail: String,
+    /// Where a live number comes from (component id and spec label), so a UI can chart its history.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub source: Option<(String, String)>,
 }
 
 impl Reading {
     fn ok(id: &str, label: &str, v: &Value, note: impl Into<String>) -> Self {
-        Reading { id: id.into(), label: label.into(), display: v.display(), value: v.as_f64(), note: note.into(), available: true }
+        Reading { id: id.into(), label: label.into(), display: v.display(), value: v.as_f64(), note: note.into(), available: true, detail: String::new(), source: None }
+    }
+
+    fn from(mut self, component: &str, spec: &str) -> Self {
+        self.source = Some((component.to_owned(), spec.to_owned()));
+        self
     }
 
     fn absent(id: &str, label: &str, note: impl Into<String>) -> Self {
-        Reading { id: id.into(), label: label.into(), display: "—".into(), value: None, note: note.into(), available: false }
+        Reading { id: id.into(), label: label.into(), display: "—".into(), value: None, note: note.into(), available: false, detail: String::new(), source: None }
     }
 }
 
@@ -46,32 +57,45 @@ fn bytes_of(c: &Component, label: &str) -> Option<u64> {
     })
 }
 
+/// `7.5 / 31.1 GiB`: both figures in the unit that suits the total.
+fn used_of_total(used: u64, total: u64) -> String {
+    const GIB: f64 = (1u64 << 30) as f64;
+    const MIB: f64 = (1u64 << 20) as f64;
+    let (unit, div) = if total as f64 >= GIB { ("GiB", GIB) } else { ("MiB", MIB) };
+    format!("{:.1} / {:.1} {unit}", used as f64 / div, total as f64 / div)
+}
+
 /// Up to five readings, in display order. Readings with no source on this machine are omitted
 /// (a desktop has no battery); readings that exist but are unavailable say why.
 pub fn headline_readings(inv: &Inventory) -> Vec<Reading> {
     let mut out = Vec::new();
 
-    if let Some((_, s)) = find_live(inv, &|c, s| c.id.starts_with("sensors:") && is_celsius(s) && (s.label.contains("Package") || s.label.contains("Tctl") || s.label.contains("Tdie"))) {
-        out.push(Reading::ok("cpu_temperature", "CPU temperature", s.value.value().unwrap(), "Package sensor"));
+    if let Some((c, s)) = find_live(inv, &|c, s| c.id.starts_with("sensors:") && is_celsius(s) && (s.label.contains("Package") || s.label.contains("Tctl") || s.label.contains("Tdie"))) {
+        out.push(Reading::ok("cpu_temperature", "CPU temperature", s.value.value().unwrap(), "Package sensor").from(&c.id, &s.label));
     } else if let Some((c, s)) = find_live(inv, &|c, s| c.category == Category::Processor && is_celsius(s)) {
-        out.push(Reading::ok("cpu_temperature", "CPU temperature", s.value.value().unwrap(), c.title.clone()));
+        out.push(Reading::ok("cpu_temperature", "CPU temperature", s.value.value().unwrap(), c.title.clone()).from(&c.id, &s.label));
     }
 
-    if let Some((_, s)) = find_live(inv, &|c, s| c.id == "memory:system" && s.label == "In use") {
-        out.push(Reading::ok("memory_in_use", "Memory in use", s.value.value().unwrap(), "Of installed memory"));
-    } else if let Some(mem) = inv.get("memory:system")
-        && let (Some(total), Some(avail)) = (bytes_of(mem, "Usable memory"), bytes_of(mem, "Available memory"))
-        && total > 0
-        && avail <= total
-    {
-        let pct = 100.0 * (total - avail) as f64 / total as f64;
-        out.push(Reading::ok("memory_in_use", "Memory in use", &Value::Percent(pct), "Of usable memory"));
+    if let Some(mem) = inv.get("memory:system") {
+        let total = bytes_of(mem, "Usable memory").or_else(|| bytes_of(mem, "Installed"));
+        let pct = find_live(inv, &|c, s| c.id == "memory:system" && s.label == "In use")
+            .and_then(|(_, s)| s.value.value().and_then(Value::as_f64))
+            .or_else(|| match (total, bytes_of(mem, "Available memory")) {
+                (Some(t), Some(a)) if t > 0 && a <= t => Some(100.0 * (t - a) as f64 / t as f64),
+                _ => None,
+            });
+        if let Some(pct) = pct {
+            let mut r = Reading::ok("memory_in_use", "Memory in use", &Value::Percent(pct), "Of usable memory");
+            if let Some(t) = total.filter(|t| *t > 0) {
+                r.detail = used_of_total((t as f64 * pct / 100.0) as u64, t);
+            }
+            out.push(r);
+        }
     }
-
     let gpus: Vec<(&Component, &Spec)> =
         inv.in_category(Category::Graphics).filter_map(|g| g.all_specs().find(|s| s.label == "Temperature").map(|s| (g, s))).collect();
     if let Some((g, s)) = gpus.iter().find(|(_, s)| s.is_available()) {
-        out.push(Reading::ok("gpu_temperature", "GPU temperature", s.value.value().unwrap(), g.title.clone()));
+        out.push(Reading::ok("gpu_temperature", "GPU temperature", s.value.value().unwrap(), g.title.clone()).from(&g.id, &s.label));
     } else if let Some((g, s)) = gpus.iter().find(|(_, s)| s.value.source.contains("suspended")).or(gpus.first()) {
         let note = if s.value.source.contains("suspended") {
             format!("{} is asleep; not queried so it stays asleep", g.title)
@@ -85,7 +109,7 @@ pub fn headline_readings(inv: &Inventory) -> Vec<Reading> {
         && let Some(charge) = b.all_specs().find(|s| s.label == "Charge" && s.is_available())
     {
         let status = b.all_specs().find(|s| s.label == "Status").map(Spec::display).unwrap_or_default();
-        out.push(Reading::ok("battery", "Battery", charge.value.value().unwrap(), status));
+        out.push(Reading::ok("battery", "Battery", charge.value.value().unwrap(), status).from(&b.id, &charge.label));
     }
 
     if let Some((c, s)) = find_live(inv, &|c, s| c.id.starts_with("sensors:nvme") && is_celsius(s) && s.label == "Composite") {
@@ -115,6 +139,8 @@ mod tests {
         assert_eq!(r[2].display, "48 °C");
         assert_eq!(r[3].display, "86%");
         assert_eq!(r[3].note, "Discharging");
+        assert_eq!(r[0].source, Some(("sensors:coretemp".to_owned(), "Package".to_owned())));
+        assert_eq!(r[1].detail, "12.2 / 32.0 GiB");
     }
 
     #[test]

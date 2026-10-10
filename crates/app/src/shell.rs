@@ -20,6 +20,7 @@ impl Render for Facet {
         let t = cx.theme().clone();
         let narrow = f32::from(window.viewport_size().width) < NARROW_BELOW;
         self.narrow = narrow;
+        self.viewport_w = f32::from(window.viewport_size().width);
 
         let content: AnyElement = self.page_content(narrow, window, cx);
 
@@ -159,7 +160,7 @@ impl Facet {
         // Machine identity.
         if !narrow {
             let (title, sub) = match machine {
-                Some(m) => (m.title.clone(), m.subtitle.clone().unwrap_or_default()),
+                Some(m) => (m.title.clone(), "Local machine".to_owned()),
                 None if self.is_loading() => ("Reading this machine…".to_owned(), String::new()),
                 None => ("This machine".to_owned(), String::new()),
             };
@@ -171,8 +172,15 @@ impl Facet {
                     .flex()
                     .flex_col()
                     .gap(px(2.))
-                    .child(div().text_size(px(13.)).font_weight(FontWeight::SEMIBOLD).text_color(t.colors.nav_text).child(title))
-                    .when(!sub.is_empty(), |d| d.child(div().text_size(px(12.)).text_color(t.colors.nav_muted).child(sub))),
+                    .child(
+                        div()
+                            .flex()
+                            .items_start()
+                            .gap(px(9.))
+                            .child(div().mt(px(5.)).size(px(8.)).flex_none().rounded_full().bg(t.colors.sage))
+                            .child(div().text_size(px(13.)).font_weight(FontWeight::SEMIBOLD).text_color(t.colors.nav_text).child(title)),
+                    )
+                    .when(!sub.is_empty(), |d| d.child(div().pl(px(17.)).text_size(px(12.)).text_color(t.colors.nav_muted).child(sub))),
             );
         } else {
             nav = nav.child(div().h(px(12.)));
@@ -197,21 +205,17 @@ impl Facet {
     }
 
     fn breadcrumb(&self) -> Vec<(String, Option<Page>)> {
-        let mut crumbs = vec![("Overview".to_owned(), Some(Page::Overview))];
+        let home = ("My machine".to_owned(), Some(Page::Overview));
         match &self.page {
-            Page::Overview => return vec![("Overview".into(), None)],
-            Page::Category(c) => crumbs.push((c.label().into(), None)),
+            Page::Overview => vec![home, ("Overview".into(), None)],
+            Page::Category(c) => vec![home, (c.label().into(), None)],
             Page::Component(id) => match self.inv.get(id) {
-                Some(c) => {
-                    crumbs.push((c.category.label().into(), Some(Page::Category(c.category))));
-                    crumbs.push((c.title.clone(), None));
-                }
-                None => crumbs.push(("Device".into(), None)),
+                Some(c) => vec![home, (c.category.label().into(), Some(Page::Category(c.category))), (c.title.clone(), None)],
+                None => vec![home, ("Device".into(), None)],
             },
-            Page::Connections => crumbs.push(("Device connections".into(), None)),
-            Page::Preferences => crumbs.push(("Preferences".into(), None)),
+            Page::Connections => vec![home, ("Device connections".into(), None)],
+            Page::Preferences => vec![home, ("Preferences".into(), None)],
         }
-        crumbs
     }
 
     fn toolbar(&self, narrow: bool, cx: &mut Context<Self>) -> impl IntoElement {
@@ -280,7 +284,7 @@ impl Facet {
             .gap(px(8.))
             .h(px(34.))
             .px(px(10.))
-            .when(!narrow, |d| d.w(px(250.)))
+            .when(!narrow, |d| d.w(px(310.)))
             .rounded(px(8.))
             .border_1()
             .border_color(t.colors.hairline_strong)
@@ -291,7 +295,7 @@ impl Facet {
             .on_activate(cx, move |this, window, cx| this.open_search(&crate::app::OpenSearch, window, cx))
             .child(icon("search", 15., t.colors.muted))
             .when(!narrow, |d| {
-                d.child(div().flex_1().text_size(px(13.)).child("Search hardware"))
+                d.child(div().flex_1().text_size(px(13.)).child("Find a device or specification"))
                     .child(div().text_size(px(11.5)).px(px(5.)).py(px(1.)).rounded(px(4.)).border_1().border_color(t.colors.hairline_strong).text_color(t.colors.faint).child("Ctrl K"))
             });
 
@@ -308,16 +312,15 @@ impl Facet {
             .px(px(if narrow { 10. } else { 14. }))
             .rounded(px(8.))
             .border_1()
-            .border_color(t.colors.accent)
-            .bg(t.colors.accent)
-            .text_color(t.colors.on_accent)
+            .border_color(t.colors.hairline_strong)
+            .text_color(t.colors.text)
             .font_weight(FontWeight::SEMIBOLD)
             .text_size(px(13.))
             .cursor_pointer()
-            .hover(|s| s.opacity(0.92))
-            .focus_visible(|s| s.border_color(t.colors.text))
+            .hover(|s| s.bg(t.colors.hover))
+            .focus_visible(|s| s.border_color(t.colors.accent))
             .on_activate(cx, move |this, window, cx| this.open_export(&crate::app::OpenExport, window, cx))
-            .child(icon("download", 15., t.colors.on_accent))
+            .child(icon("file-text", 15., t.colors.text))
             .when(!narrow, |d| d.child("Export report"));
 
         let busy = matches!(self.load, Load::Loading { .. });
